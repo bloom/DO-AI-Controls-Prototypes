@@ -35,11 +35,14 @@ final class ImageGenerationViewWrapper: NSObject {
 
 struct ImageGenerationView: View {
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isCustomPromptFocused: Bool
     @State private var customPrompt: String = ""
     @State private var isGenerating: Bool = false
     @State private var currentPage: Int = 0
     @State private var selectedStyle: ImageStyle = .none
-    @State private var useEntryAsPrompt: Bool = true
+    @State private var useEntryText: Bool = true
+    @State private var useAIEnhanced: Bool = false
+    @State private var useMore: Bool = false
     @State private var isSharePresented: Bool = false
     @State private var shareImage: UIImage?
     // Start with just two placeholders:
@@ -158,27 +161,11 @@ struct ImageGenerationView: View {
                         }
                     }
                     
-                    // Entry as prompt toggle
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Use entry as prompt", isOn: $useEntryAsPrompt)
-                            .tint(accentColor)
-                            .padding(.horizontal)
-                    }
-                    
-                    // Custom prompt field
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Custom prompt")
-                            .font(.headline)
-                            .foregroundColor(.black)
-                            .padding(.horizontal)
-                        
-                        TextField("Describe additional details...", text: $customPrompt, axis: .vertical)
-                            .lineLimit(3...5)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .padding(.horizontal)
-                    }
-                    
+                    // Generate Image button - moved up
                     Button(action: {
+                        // Dismiss keyboard if active
+                        isCustomPromptFocused = false
+                        
                         // Find the next available placeholder
                         let nextIndex = findNextAvailablePlaceholder()
                         
@@ -212,6 +199,49 @@ struct ImageGenerationView: View {
                     }
                     .disabled(isGenerating)
                     .padding(.horizontal)
+                    
+                    // Prompt section with multi-select options
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Prompt")
+                            .font(.headline)
+                            .foregroundColor(.black)
+                            .padding(.horizontal)
+                        
+                        // Multi-select toggle options for prompt
+                        VStack(alignment: .leading, spacing: 8) {
+                            ToggleButton(title: "Entry Text", isSelected: useEntryText) {
+                                useEntryText.toggle()
+                            }
+                            
+                            ToggleButton(title: "AI Enhanced", isSelected: useAIEnhanced) {
+                                useAIEnhanced.toggle()
+                            }
+                            
+                            ToggleButton(title: "More Details...", isSelected: useMore) {
+                                useMore.toggle()
+                                if useMore {
+                                    // Focus the text field when "More" is toggled on
+                                    isCustomPromptFocused = true
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        // Custom prompt field
+                        if useMore {
+                            TextField("Add additional details...", text: $customPrompt, axis: .vertical)
+                                .focused($isCustomPromptFocused)
+                                .lineLimit(3...5)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .padding(.horizontal)
+                                .onChange(of: customPrompt) { newValue in
+                                    // Auto-enable "More" toggle if user types anything
+                                    if !newValue.isEmpty && !useMore {
+                                        useMore = true
+                                    }
+                                }
+                        }
+                    }
                     
                     Spacer()
                 }
@@ -407,6 +437,44 @@ struct StyleButton: View {
                         .fill(isSelected ? accentColor.opacity(0.2) : Color.gray.opacity(0.2))
                 )
                 .foregroundColor(isSelected ? accentColor : .gray)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// Toggle button for prompt options
+struct ToggleButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    // Define accent color
+    let accentColor = Color(hex: "44C0FF")
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? accentColor : Color.gray.opacity(0.3))
+                        .frame(width: 24, height: 24)
+                    
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Color.gray.opacity(0.05))
+            .cornerRadius(10)
         }
         .buttonStyle(.plain)
     }
