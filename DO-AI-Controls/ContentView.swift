@@ -9,18 +9,9 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedFeature: AIFeature?
-    @State private var selectedPhotoIndex: Int?
-    @State private var isPhotoViewPresented = false
-    @State private var isCaptionSheetPresented = false
     
     // Define app accent color
     let accentColor = Color(hex: "44C0FF")
-    
-    // Sample captions for the images
-    private let imageCaptions = [
-        "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance.",
-        "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance."
-    ]
     
     var body: some View {
         NavigationStack {
@@ -46,79 +37,15 @@ struct ContentView: View {
                             print("Photo Description button tapped")
                             selectedFeature = .photoDescription
                         }
+                        
+                        FeatureButton(title: "Captions & Descriptions", feature: .captionsDescriptions, color: accentColor) {
+                            print("Captions & Descriptions button tapped")
+                            selectedFeature = .captionsDescriptions
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
                     
-                    // Sample images in landscape orientation
-                    VStack(spacing: 20) {
-                        // First sample image with caption
-                        ZStack(alignment: .bottom) {
-                            Button {
-                                selectedPhotoIndex = 0
-                                isPhotoViewPresented = true
-                            } label: {
-                                Image("sample")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 200)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            // Caption overlay
-                            Button {
-                                selectedPhotoIndex = 0
-                                isCaptionSheetPresented = true
-                            } label: {
-                                Text(imageCaptions[0])
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        
-                        // Second sample image with caption
-                        ZStack(alignment: .bottom) {
-                            Button {
-                                selectedPhotoIndex = 1
-                                isPhotoViewPresented = true
-                            } label: {
-                                Image("sample")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 200)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            // Caption overlay
-                            Button {
-                                selectedPhotoIndex = 1
-                                isCaptionSheetPresented = true
-                            } label: {
-                                Text(imageCaptions[1])
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 20)
-                    .padding(.bottom, 20)
                 }
             }
             .navigationTitle("Day One AI")
@@ -132,18 +59,8 @@ struct ContentView: View {
                     TranscribeAudioView()
                 case .photoDescription:
                     PhotoDescriptionView()
-                }
-            }
-            .sheet(isPresented: $isPhotoViewPresented) {
-                if let index = selectedPhotoIndex {
-                    PhotoDetailView(photoIndex: index, isPresented: $isPhotoViewPresented)
-                }
-            }
-            .sheet(isPresented: $isCaptionSheetPresented) {
-                if let index = selectedPhotoIndex {
-                    CaptionSheetView(caption: imageCaptions[index])
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
+                case .captionsDescriptions:
+                    CaptionsDescriptionsView()
                 }
             }
         }
@@ -182,12 +99,15 @@ struct PhotoDetailView: View {
     @Binding var isPresented: Bool
     @State private var isFavorite: Bool = false
     @State private var captionText: String = ""
+    @State private var mediaDescription: String = ""
     @State private var isCaptionSheetPresented = false
+    @State private var shouldFocusCaption = false
     
     // Sample metadata for the images
     private let metadata = [
         PhotoMetadata(
-            caption: "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance.",
+            caption: "Jana and I parked in the orchard",
+            mediaDescription: "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance.",
             dateTaken: Date(timeIntervalSince1970: 1710234567),
             location: "Grand Teton National Park, Wyoming",
             camera: "iPhone 13 Pro",
@@ -195,7 +115,8 @@ struct PhotoDetailView: View {
             filename: "IMG_2024_03_25_0835.jpg"
         ),
         PhotoMetadata(
-            caption: "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance.",
+            caption: "Jana and I parked in the orchard",
+            mediaDescription: "The photo depicts the interior of a vintage car, showing a view through the front windshield from the driver's perspective. The dashboard is prominent, featuring classic dials and a steering wheel that suggest a mid-20th-century model. Above, the rearview mirror reflects the image of a woman, presumably the driver, capturing a moment of her journey. The sunlit scene outside displays a rural setting with lush greenery, likely an orchard or vineyard, adding a serene backdrop to the interior's nostalgic ambiance.",
             dateTaken: Date(timeIntervalSince1970: 1710345678),
             location: "Lake Louise, Banff National Park",
             camera: "iPhone 13 Pro",
@@ -210,29 +131,40 @@ struct PhotoDetailView: View {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
                 VStack {
-                    // Photo
-                    Image("sample")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    
-                    // Caption with favorite button
-                    HStack(alignment: .top) {
-                        // Caption display (limited to 2 lines)
+                    // Photo with info icon overlay
+                    ZStack(alignment: .topTrailing) {
+                        Image("sample")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        
+                        // Small info button in corner of image
                         Button {
+                            shouldFocusCaption = false
+                            isCaptionSheetPresented = true
+                        } label: {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.white)
+                                .font(.footnote)
+                                .padding(6)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .padding(8)
+                    }
+                    
+                    // Caption and favorite button
+                    HStack {
+                        // Caption display (single line)
+                        Button {
+                            shouldFocusCaption = true
                             isCaptionSheetPresented = true
                         } label: {
                             Text(captionText)
                                 .font(.subheadline)
                                 .foregroundColor(.white)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
+                                .lineLimit(1)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.black.opacity(0.5))
-                                )
+                                .padding(.vertical, 8)
                         }
                         .buttonStyle(PlainButtonStyle())
                         
@@ -243,15 +175,10 @@ struct PhotoDetailView: View {
                             Image(systemName: isFavorite ? "heart.fill" : "heart")
                                 .foregroundColor(isFavorite ? .red : .white)
                                 .font(.title3)
-                                .padding(8)
-                                .background(
-                                    Circle()
-                                        .fill(Color.black.opacity(0.5))
-                                )
                         }
-                        .padding(.leading, 8)
                     }
                     .padding(.horizontal, 16)
+                    .background(Color.black.opacity(0.6))
                     
                     // Photo metadata in smaller text
                     VStack(alignment: .leading, spacing: 8) {
@@ -328,11 +255,16 @@ struct PhotoDetailView: View {
             }
             .onAppear {
                 captionText = metadata[photoIndex].caption
+                mediaDescription = metadata[photoIndex].mediaDescription
             }
             .sheet(isPresented: $isCaptionSheetPresented) {
-                CaptionSheetView(caption: captionText)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                CaptionSheetView(
+                    caption: captionText,
+                    description: mediaDescription,
+                    focusCaption: shouldFocusCaption
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .colorScheme(.dark)
@@ -352,11 +284,23 @@ struct PhotoDetailView: View {
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
+    
+    // Helper function to calculate text height
+    private func calculateTextHeight(text: String, width: CGFloat) -> CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        let textView = UITextView()
+        textView.font = font
+        textView.text = text
+        let size = CGSize(width: width - 16, height: .infinity) // 16 for padding
+        let estimatedSize = textView.sizeThatFits(size)
+        return estimatedSize.height + 32 // add extra padding
+    }
 }
 
 // Photo metadata model
 struct PhotoMetadata {
-    let caption: String
+    var caption: String
+    let mediaDescription: String
     let dateTaken: Date
     let location: String
     let camera: String
@@ -365,7 +309,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, entrySummary, transcribeAudio, photoDescription
+    case imageGeneration, entrySummary, transcribeAudio, photoDescription, captionsDescriptions
     
     var id: String { rawValue }
     
@@ -375,6 +319,7 @@ enum AIFeature: String, Identifiable {
         case .entrySummary: return "Entry Summary"
         case .transcribeAudio: return "Transcribe Audio"
         case .photoDescription: return "Photo Description"
+        case .captionsDescriptions: return "Captions & Descriptions"
         }
     }
 }
@@ -382,25 +327,100 @@ enum AIFeature: String, Identifiable {
 // Caption sheet view
 struct CaptionSheetView: View {
     let caption: String
+    let description: String
+    let focusCaption: Bool
     @State private var editedCaption: String
+    @State private var editedDescription: String
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var isTextFieldFocused: Bool
+    @FocusState private var isCaptionFocused: Bool
+    @FocusState private var isDescriptionFocused: Bool
     
-    init(caption: String) {
+    // Helper function to calculate text height
+    private func calculateTextHeight(text: String, width: CGFloat) -> CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        let textView = UITextView()
+        textView.font = font
+        textView.text = text
+        let size = CGSize(width: width - 16, height: .infinity) // 16 for padding
+        let estimatedSize = textView.sizeThatFits(size)
+        return estimatedSize.height + 32 // add extra padding
+    }
+    
+    init(caption: String, description: String = "", focusCaption: Bool = false) {
         self.caption = caption
+        self.description = description
+        self.focusCaption = focusCaption
         self._editedCaption = State(initialValue: caption)
+        self._editedDescription = State(initialValue: description)
     }
     
     var body: some View {
         NavigationView {
-            GeometryReader { geometry in
-                TextEditor(text: $editedCaption)
-                    .focused($isTextFieldFocused)
-                    .foregroundColor(.primary)
-                    .frame(minHeight: geometry.size.height - 40) // Account for safe areas
-                    .padding()
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Caption label and text field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Caption")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                        
+                        TextField("Add a caption...", text: $editedCaption)
+                            .focused($isCaptionFocused)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .padding(10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                            )
+                            .padding(.horizontal)
+                    }
+                    .padding(.top, 12)
+                    
+                    // Media description field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Media Description")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        // Gray background with auto-expanding height TextEditor
+                        GeometryReader { geometry in
+                            ZStack(alignment: .topLeading) {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.gray.opacity(0.15))
+                                
+                                TextEditor(text: $editedDescription)
+                                    .focused($isDescriptionFocused)
+                                    .font(.footnote)
+                                    .foregroundColor(.primary)
+                                    .padding(8)
+                                    .background(Color.clear)
+                                    .frame(
+                                        minHeight: calculateTextHeight(
+                                            text: editedDescription,
+                                            width: geometry.size.width
+                                        )
+                                    )
+                            }
+                        }
+                        .frame(height: min(600, max(300, calculateTextHeight(text: editedDescription, width: UIScreen.main.bounds.width - 50))))
+                        .fixedSize(horizontal: false, vertical: true) // Allow vertical expansion
+                    }
+                    .padding(.horizontal)
+                    
+                    // Add extra space to ensure content scrolls behind keyboard
+                    Spacer(minLength: 300)
+                }
             }
-            .navigationTitle("Photo Caption")
+            .onAppear {
+                // Set focus based on parameter
+                if focusCaption {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        isCaptionFocused = true
+                    }
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

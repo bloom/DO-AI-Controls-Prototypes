@@ -126,10 +126,10 @@ struct ImageGenerationView: View {
                         .id(generatedImages.count) // Force TabView to reinitialize when number of items changes
                         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                         .frame(height: UIScreen.main.bounds.width * 0.6)
-                        .onChange(of: currentPage) { newIndex in
+                        .onChange(of: currentPage) { oldValue, newValue in
                             // Delay to allow animation to complete
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                checkAndAddNextPlaceholder(currentIndex: newIndex)
+                                checkAndAddNextPlaceholder(currentIndex: newValue)
                             }
                         }
                         
@@ -236,7 +236,7 @@ struct ImageGenerationView: View {
                                 .lineLimit(3...5)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .padding(.horizontal)
-                                .onChange(of: customPrompt) { newValue in
+                                .onChange(of: customPrompt) { oldValue, newValue in
                                     // Auto-enable "More" toggle if user types anything
                                     if !newValue.isEmpty && !useMore {
                                         useMore = true

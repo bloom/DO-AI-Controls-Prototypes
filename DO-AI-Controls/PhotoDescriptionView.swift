@@ -38,7 +38,7 @@ struct PhotoDescriptionView: View {
                                 .cornerRadius(10)
                         }
                         .padding(.horizontal)
-                        .onChange(of: selectedItem) { _ in
+                        .onChange(of: selectedItem) { oldValue, newValue in
                             Task {
                                 if let data = try? await selectedItem?.loadTransferable(type: Data.self),
                                    let uiImage = UIImage(data: data) {
