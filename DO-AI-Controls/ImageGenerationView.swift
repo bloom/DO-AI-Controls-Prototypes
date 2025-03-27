@@ -56,10 +56,12 @@ struct ImageGenerationView: View {
     // Define accent color
     let accentColor = Color(hex: "44C0FF")
     
-    // Sample styles
+    // Available styles
     let styles: [ImageStyle] = [
-        .none, .painting, .watercolor, .retro, .cartoon, 
-        .threeD, .eighties, .minimalist, .sketch, .vintage
+        .none, .threeD, .analogFilm, .anime, .cinematic,
+        .comicbook, .craftClay, .digitalArt, .enhance, .fantasyArt,
+        .isometric, .lineArt, .lowpoly, .neonpunk,
+        .origami, .photographic, .pixelArt, .texture
     ]
     
     var body: some View {
@@ -483,21 +485,34 @@ struct ToggleButton: View {
 // Image style enum
 enum ImageStyle: String, CaseIterable, Hashable {
     case none
-    case painting
-    case watercolor
-    case retro
-    case cartoon
-    case threeD
-    case eighties
-    case minimalist
-    case sketch
-    case vintage
+    case threeD = "3d-model"
+    case analogFilm = "analog-film"
+    case anime
+    case cinematic
+    case comicbook
+    case craftClay = "craft-clay"
+    case digitalArt = "digital-art"
+    case enhance
+    case fantasyArt = "fantasy-art"
+    case isometric
+    case lineArt = "line-art"
+    case lowpoly
+    case neonpunk
+    case origami
+    case photographic
+    case pixelArt = "pixel-art"
+    case texture
     
     var displayName: String {
         switch self {
         case .none: return "No Style"
-        case .threeD: return "3D"
-        case .eighties: return "80s"
+        case .threeD: return "3D Model"
+        case .analogFilm: return "Analog Film"
+        case .craftClay: return "Craft Clay"
+        case .digitalArt: return "Digital Art"
+        case .fantasyArt: return "Fantasy Art"
+        case .lineArt: return "Line Art"
+        case .pixelArt: return "Pixel Art"
         default: return rawValue.capitalized
         }
     }
