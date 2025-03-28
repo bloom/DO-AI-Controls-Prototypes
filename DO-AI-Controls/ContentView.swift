@@ -42,6 +42,16 @@ struct ContentView: View {
                             print("Captions & Descriptions button tapped")
                             selectedFeature = .captionsDescriptions
                         }
+                        
+                        FeatureButton(title: "iOS Native Views", feature: .iOSNativeViews, color: accentColor) {
+                            print("iOS Native Views button tapped")
+                            selectedFeature = .iOSNativeViews
+                        }
+                        
+                        FeatureButton(title: "iOS Presentation Methods", feature: .presentationMethods, color: accentColor) {
+                            print("iOS Presentation Methods button tapped")
+                            selectedFeature = .presentationMethods
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
@@ -62,6 +72,10 @@ struct ContentView: View {
                     PhotoDescriptionView()
                 case .captionsDescriptions:
                     CaptionsDescriptionsView()
+                case .iOSNativeViews:
+                    IOSNativeViewsView()
+                case .presentationMethods:
+                    PresentationMethodsView()
                 }
             }
         }
@@ -259,14 +273,16 @@ struct PhotoDetailView: View {
                 mediaDescription = metadata[photoIndex].mediaDescription
             }
             .sheet(isPresented: $isCaptionSheetPresented) {
-                CaptionSheetView(
-                    caption: captionText,
-                    description: mediaDescription,
-                    focusCaption: shouldFocusCaption
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                KeyboardAwarePanel {
+                    CaptionSheetView(
+                        caption: captionText,
+                        description: mediaDescription,
+                        focusCaption: shouldFocusCaption
+                    )
+                    .frame(maxWidth: UIScreen.main.bounds.width - 32)
+                }
             }
+            .interactiveDismissDisabled()
         }
         .colorScheme(.dark)
     }
@@ -310,7 +326,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, entrySummary, transcribeAudio, photoDescription, captionsDescriptions
+    case imageGeneration, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods
     
     var id: String { rawValue }
     
@@ -321,20 +337,19 @@ enum AIFeature: String, Identifiable {
         case .transcribeAudio: return "Transcribe Audio"
         case .photoDescription: return "Photo Description"
         case .captionsDescriptions: return "Captions & Descriptions"
+        case .iOSNativeViews: return "iOS Native Views"
+        case .presentationMethods: return "iOS Presentation Methods"
         }
     }
 }
 
-// Caption sheet view
+// Caption & details floating panel
 struct CaptionSheetView: View {
     // Data properties
     let caption: String
-    let description: String
     let focusCaption: Bool
     @State private var editedCaption: String
-    @State private var editedDescription: String
-    @State private var isAIGenerated: Bool = true
-    @State private var showsWordCount: Bool = false
+    @State private var isFavorite: Bool = false
     
     // Environment properties
     @Environment(\.dismiss) private var dismiss
@@ -342,63 +357,94 @@ struct CaptionSheetView: View {
     
     // Focus states
     @FocusState private var isCaptionFocused: Bool
-    @FocusState private var isDescriptionFocused: Bool
+    
+    // Sample data (would come from actual photo in real implementation)
+    private let dateTaken = Date()
+    private let location = "Grand Teton National Park"
+    private let placeName = "Jenny Lake Trail"
     
     // Accent color
     let accentColor = Color(hex: "44C0FF")
     
-    // Word count computed property
-    var wordCount: Int {
-        editedDescription.split(separator: " ").count
-    }
-    
-    // Helper function to calculate text height
-    private func calculateTextHeight(text: String, width: CGFloat) -> CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .body)
-        let textView = UITextView()
-        textView.font = font
-        textView.text = text
-        let size = CGSize(width: width - 32, height: .infinity) // 32 for padding
-        let estimatedSize = textView.sizeThatFits(size)
-        return estimatedSize.height + 24 // add extra padding
-    }
-    
     init(caption: String, description: String = "", focusCaption: Bool = false) {
         self.caption = caption
-        self.description = description
         self.focusCaption = focusCaption
         self._editedCaption = State(initialValue: caption)
-        self._editedDescription = State(initialValue: description)
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header info badge at the top
-                    if isAIGenerated {
-                        HStack {
-                            Image(systemName: "sparkles")
-                                .foregroundColor(accentColor)
-                            Text("AI Generated")
-                                .font(.footnote.weight(.medium))
-                                .foregroundColor(accentColor)
+        // Floating panel design
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                // Handle at top for visual cue this is draggable
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 40, height: 4)
+                    .cornerRadius(2)
+                    .padding(.vertical, 8)
+                
+                VStack(spacing: 12) {
+                    // Date, Time, Time Zone row with Favorite on right
+                    HStack(alignment: .center) {
+                        Image(systemName: "calendar")
+                            .foregroundColor(.secondary)
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(formatDate(dateTaken))
+                                .font(.subheadline)
+                            HStack(spacing: 4) {
+                                Text(formatTime(dateTaken))
+                                Text("·")
+                                Text(timeZoneName())
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                         }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(accentColor.opacity(0.1))
-                        )
-                        .padding(.top, 8)
+                        
+                        Spacer()
+                        
+                        // Favorite button (heart)
+                        Button {
+                            isFavorite.toggle()
+                        } label: {
+                            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                                .foregroundColor(isFavorite ? .red : .secondary)
+                                .font(.system(size: 20))
+                        }
                     }
+                    .padding(.horizontal)
                     
-                    // Caption section
+                    Divider()
+                        .padding(.horizontal)
+                    
+                    // Location, Place Name row
+                    HStack(alignment: .center) {
+                        Image(systemName: "location.fill")
+                            .foregroundColor(.secondary)
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(location)
+                                .font(.subheadline)
+                            Text(placeName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    
+                    Divider()
+                        .padding(.horizontal)
+                    
+                    // Caption section (single line)
                     VStack(alignment: .leading, spacing: 10) {
                         // Caption header
                         HStack {
                             Text("Caption")
-                                .font(.headline)
+                                .font(.subheadline.weight(.medium))
                                 .foregroundColor(.primary)
                             
                             Spacer()
@@ -410,178 +456,194 @@ struct CaptionSheetView: View {
                         }
                         .padding(.horizontal)
                         
-                        // Caption text field
-                        ZStack(alignment: .topLeading) {
-                            if editedCaption.isEmpty {
-                                Text("Add a caption...")
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                            }
+                        // Caption text field (single line)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(colorScheme == .dark 
+                                      ? Color(.systemGray5) 
+                                      : Color(.systemGray6).opacity(0.5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(isCaptionFocused ? accentColor : Color.clear, lineWidth: 1.5)
+                                )
                             
-                            TextEditor(text: $editedCaption)
+                            TextField("Add a caption...", text: $editedCaption)
                                 .focused($isCaptionFocused)
                                 .font(.body)
-                                .foregroundColor(.primary)
-                                .frame(minHeight: 44, maxHeight: 120)
-                                .padding(4)
-                                .scrollContentBackground(.hidden)
-                                .background(Color.clear)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 12)
+                                .contentShape(Rectangle())
                         }
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(colorScheme == .dark 
-                                      ? Color(.systemGray6) 
-                                      : Color(.systemGray6).opacity(0.5))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(isCaptionFocused ? accentColor : Color.clear, lineWidth: 2)
-                        )
                         .padding(.horizontal)
                     }
-                    
-                    // Media Description section
-                    VStack(alignment: .leading, spacing: 10) {
-                        // Description header with word count toggle
-                        HStack {
-                            Text("Media Description")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            if showsWordCount {
-                                // Word count badge
-                                Text("\(wordCount) words")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .padding(.vertical, 4)
-                                    .padding(.horizontal, 8)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color(.systemGray5))
-                                    )
-                            }
-                            
-                            // Word count toggle
-                            Button {
-                                showsWordCount.toggle()
-                            } label: {
-                                Image(systemName: showsWordCount ? "number.circle.fill" : "number.circle")
-                                    .foregroundColor(showsWordCount ? accentColor : .secondary)
-                                    .font(.system(size: 20))
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Description text editor
-                        ZStack(alignment: .topLeading) {
-                            if editedDescription.isEmpty {
-                                Text("Add a description...")
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                            }
-                            
-                            GeometryReader { geometry in
-                                TextEditor(text: $editedDescription)
-                                    .focused($isDescriptionFocused)
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-                                    .frame(
-                                        minHeight: max(150, calculateTextHeight(
-                                            text: editedDescription,
-                                            width: geometry.size.width
-                                        ))
-                                    )
-                                    .scrollContentBackground(.hidden)
-                                    .background(Color.clear)
-                                    .padding(8)
-                            }
-                            .frame(minHeight: 150)
-                        }
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(colorScheme == .dark 
-                                      ? Color(.systemGray6) 
-                                      : Color(.systemGray6).opacity(0.5))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(isDescriptionFocused ? accentColor : Color.clear, lineWidth: 2)
-                        )
-                        .padding(.horizontal)
-                        
-                        // Actions row
-                        HStack {
-                            // Regenerate button
-                            Button {
-                                // Regenerate description action
-                            } label: {
-                                Label("Regenerate", systemImage: "arrow.clockwise")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundColor(accentColor)
-                            }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule()
-                                    .fill(accentColor.opacity(0.1))
-                            )
-                            
-                            Spacer()
-                            
-                            // Copy button
-                            Button {
-                                UIPasteboard.general.string = editedDescription
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(
-                                Capsule()
-                                    .fill(Color(.systemGray5))
-                            )
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    }
-                    
-                    Spacer(minLength: 60)
+                    .padding(.bottom, 16)
                 }
-                .padding(.bottom, 20)
+                .padding(.top, 8)
             }
-            .onAppear {
-                // Set focus based on parameter
-                if focusCaption {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        isCaptionFocused = true
-                    }
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundColor(accentColor)
-                }
-                
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+            .frame(width: UIScreen.main.bounds.width - 32)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(colorScheme == .dark ? Color(.systemGray6) : Color(.systemBackground))
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            )
+            
+            // Close (X) button
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.secondary)
+                    .padding(8)
+                    .background(
+                        Circle()
+                            .fill(colorScheme == .dark ? Color(.systemGray5) : Color(.systemGray6))
+                    )
+            }
+            .padding(.top, 8)
+            .padding(.trailing, 12)
+        }
+        .onAppear {
+            // Set focus based on parameter
+            if focusCaption {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    isCaptionFocused = true
                 }
             }
+        }
+    }
+    
+    // Helper functions for formatting date and time
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    private func timeZoneName() -> String {
+        return TimeZone.current.abbreviation() ?? "UTC"
+    }
+}
+
+// Helper to create transparent sheet background
+struct ClearBackgroundView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        DispatchQueue.main.async {
+            view.superview?.superview?.backgroundColor = .clear
+        }
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+// Keyboard-aware panel that positions content correctly
+struct KeyboardAwarePanel<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var keyboardActive = false
+    
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background overlay with tap to dismiss (excluding content area)
+            Color.black.opacity(0.5)
+                .edgesIgnoringSafeArea(.all)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Only dismiss when tapping outside content
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    dismiss()
+                }
+            
+            // Content positioned based on keyboard
+            GeometryReader { geometry in
+                VStack {
+                    if keyboardActive {
+                        // When keyboard is shown, position just above it
+                        Spacer()
+                        content
+                            .padding(.bottom, keyboardHeight + 8)
+                    } else {
+                        // When keyboard is hidden, center in screen
+                        Spacer()
+                        content
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .background(KeyboardObserver(keyboardHeight: $keyboardHeight, keyboardActive: $keyboardActive))
+        .background(ClearBackgroundView())
+    }
+}
+
+// Observer for keyboard notifications
+struct KeyboardObserver: UIViewRepresentable {
+    @Binding var keyboardHeight: CGFloat
+    @Binding var keyboardActive: Bool
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        
+        // Add observer for keyboard notifications
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.keyboardWillShow),
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.keyboardWillHide),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(keyboardHeight: $keyboardHeight, keyboardActive: $keyboardActive)
+    }
+    
+    class Coordinator: NSObject {
+        var keyboardHeight: Binding<CGFloat>
+        var keyboardActive: Binding<Bool>
+        
+        init(keyboardHeight: Binding<CGFloat>, keyboardActive: Binding<Bool>) {
+            self.keyboardHeight = keyboardHeight
+            self.keyboardActive = keyboardActive
+        }
+        
+        @objc func keyboardWillShow(notification: Notification) {
+            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                self.keyboardHeight.wrappedValue = keyboardFrame.height
+                self.keyboardActive.wrappedValue = true
+            }
+        }
+        
+        @objc func keyboardWillHide(notification: Notification) {
+            self.keyboardHeight.wrappedValue = 0
+            self.keyboardActive.wrappedValue = false
         }
     }
 }

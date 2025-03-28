@@ -347,14 +347,16 @@ struct CaptionsDescriptionsView: View {
                 LocalPhotoDetailView(photoIndex: selectedPhotoIndex, isPresented: $isPhotoViewPresented, metadata: imageMetadata)
             }
             .sheet(isPresented: $isCaptionSheetPresented) {
-                CaptionSheetView(
-                    caption: imageMetadata[selectedPhotoIndex].caption,
-                    description: imageMetadata[selectedPhotoIndex].mediaDescription,
-                    focusCaption: shouldFocusCaption
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                KeyboardAwarePanel {
+                    CaptionSheetView(
+                        caption: imageMetadata[selectedPhotoIndex].caption,
+                        description: imageMetadata[selectedPhotoIndex].mediaDescription,
+                        focusCaption: shouldFocusCaption
+                    )
+                    .frame(maxWidth: UIScreen.main.bounds.width - 32)
+                }
             }
+            .interactiveDismissDisabled()
             .fullScreenCover(isPresented: $isQuickLookPresented) {
                 QuickLookFullScreen(imageSources: ["sample", "sample1", "sample2"])
             }
@@ -535,14 +537,16 @@ struct LocalPhotoDetailView: View {
                 mediaDescription = metadata[photoIndex].mediaDescription
             }
             .sheet(isPresented: $isCaptionSheetPresented) {
-                CaptionSheetView(
-                    caption: captionText,
-                    description: mediaDescription,
-                    focusCaption: shouldFocusCaption
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                KeyboardAwarePanel {
+                    CaptionSheetView(
+                        caption: captionText,
+                        description: mediaDescription,
+                        focusCaption: shouldFocusCaption
+                    )
+                    .frame(maxWidth: UIScreen.main.bounds.width - 32)
+                }
             }
+            .interactiveDismissDisabled()
         }
         .colorScheme(.dark)
     }
