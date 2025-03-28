@@ -14,9 +14,21 @@ struct CaptionsDescriptionsView: View {
     @State private var isCaptionSheetPresented = false
     @State private var shouldFocusCaption = false
     @State private var isQuickLookPresented = false
+    @State private var editCaptionsDirectly: Bool = true
+    
+    // States for direct caption editing
+    @State private var caption1: String = ""
+    @State private var caption2: String = ""
+    @State private var caption3: String = ""
+    @FocusState private var focusedCaption: Int?
     
     // Define app accent color
     let accentColor = Color(hex: "44C0FF")
+    
+    // Extra bottom space to allow keyboard to show without obscuring captions
+    private var keyboardPadding: CGFloat {
+        UIScreen.main.bounds.height * 0.2 // Reduced to allow caption to be closer to keyboard
+    }
     
     // Sample image metadata
     private let imageMetadata = [
@@ -51,28 +63,42 @@ struct CaptionsDescriptionsView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollViewReader { scrollProxy in
+                ScrollView {
                 VStack(spacing: 20) {
-                    // Quick Look button
-                    Button {
-                        isQuickLookPresented = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "eye")
-                            Text("Quick Look")
+                    // Top controls row
+                    HStack {
+                        // Quick Look button
+                        Button {
+                            isQuickLookPresented = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "eye")
+                                Text("Quick Look")
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(accentColor.opacity(0.1))
+                            )
+                            .foregroundColor(accentColor)
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(accentColor.opacity(0.1))
-                        )
-                        .foregroundColor(accentColor)
+                        
+                        // Edit Captions Directly toggle
+                        Toggle(isOn: $editCaptionsDirectly) {
+                            Text("Edit Captions Directly")
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
+                        .toggleStyle(SwitchToggleStyle(tint: accentColor))
                     }
                     .padding(.horizontal, 18)
                     
                     // First sample image with caption and info icon
                     ZStack {
+                        // ID for ScrollViewReader
+                        Color.clear.frame(height: 0).id(1)
                         // Image with button
                         Button {
                             selectedPhotoIndex = 0
@@ -111,17 +137,34 @@ struct CaptionsDescriptionsView: View {
                         VStack {
                             Spacer()
                             Button {
-                                selectedPhotoIndex = 0
-                                shouldFocusCaption = true
-                                isCaptionSheetPresented = true
+                                if editCaptionsDirectly {
+                                    focusedCaption = 1
+                                } else {
+                                    selectedPhotoIndex = 0
+                                    shouldFocusCaption = true
+                                    isCaptionSheetPresented = true
+                                }
                             } label: {
-                                Text(imageMetadata[0].caption)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
+                                Group {
+                                    if editCaptionsDirectly {
+                                        TextField("", text: $caption1, axis: .horizontal)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                            .focused($focusedCaption, equals: 1)
+                                    } else {
+                                        Text(caption1)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                    }
+                                }
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -130,6 +173,8 @@ struct CaptionsDescriptionsView: View {
                     
                     // Second sample image with caption and info icon
                     ZStack {
+                        // ID for ScrollViewReader
+                        Color.clear.frame(height: 0).id(2)
                         // Image with button
                         Button {
                             selectedPhotoIndex = 1
@@ -168,17 +213,34 @@ struct CaptionsDescriptionsView: View {
                         VStack {
                             Spacer()
                             Button {
-                                selectedPhotoIndex = 1
-                                shouldFocusCaption = true
-                                isCaptionSheetPresented = true
+                                if editCaptionsDirectly {
+                                    focusedCaption = 2
+                                } else {
+                                    selectedPhotoIndex = 1
+                                    shouldFocusCaption = true
+                                    isCaptionSheetPresented = true
+                                }
                             } label: {
-                                Text(imageMetadata[1].caption)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
+                                Group {
+                                    if editCaptionsDirectly {
+                                        TextField("", text: $caption2, axis: .horizontal)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                            .focused($focusedCaption, equals: 2)
+                                    } else {
+                                        Text(caption2)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                    }
+                                }
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -187,6 +249,8 @@ struct CaptionsDescriptionsView: View {
                     
                     // Third sample image with caption and info icon
                     ZStack {
+                        // ID for ScrollViewReader
+                        Color.clear.frame(height: 0).id(3)
                         // Image with button
                         Button {
                             selectedPhotoIndex = 2
@@ -225,22 +289,45 @@ struct CaptionsDescriptionsView: View {
                         VStack {
                             Spacer()
                             Button {
-                                selectedPhotoIndex = 2
-                                shouldFocusCaption = true
-                                isCaptionSheetPresented = true
+                                if editCaptionsDirectly {
+                                    focusedCaption = 3
+                                } else {
+                                    selectedPhotoIndex = 2
+                                    shouldFocusCaption = true
+                                    isCaptionSheetPresented = true
+                                }
                             } label: {
-                                Text(imageMetadata[2].caption)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.black.opacity(0.6))
-                                    .foregroundColor(.white)
+                                Group {
+                                    if editCaptionsDirectly {
+                                        TextField("", text: $caption3, axis: .horizontal)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                            .focused($focusedCaption, equals: 3)
+                                    } else {
+                                        Text(caption3)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.6))
+                                            .foregroundColor(.white)
+                                    }
+                                }
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    
+                    // Add extra padding at bottom to make room for keyboard when editing captions
+                    if editCaptionsDirectly && (focusedCaption != nil) {
+                        Spacer()
+                            .frame(height: keyboardPadding)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 20)
@@ -271,6 +358,25 @@ struct CaptionsDescriptionsView: View {
             .fullScreenCover(isPresented: $isQuickLookPresented) {
                 QuickLookFullScreen(imageSources: ["sample", "sample1", "sample2"])
             }
+            .onAppear {
+                // Initialize captions from metadata
+                caption1 = imageMetadata[0].caption
+                caption2 = imageMetadata[1].caption
+                caption3 = imageMetadata[2].caption
+            }
+            // Handle keyboard dismissal when tapping outside
+            .onChange(of: focusedCaption) { oldValue, newValue in
+                if newValue != nil {
+                    // Add a short delay to allow keyboard to appear first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation {
+                            // Use .center anchor to position the caption field more centrally
+                            scrollProxy.scrollTo(newValue!, anchor: .center)
+                        }
+                    }
+                }
+            }
+          }
         }
     }
 }
