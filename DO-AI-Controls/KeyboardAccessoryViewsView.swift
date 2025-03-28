@@ -93,7 +93,7 @@ struct KeyboardAccessoryViewsView: View {
                 // Component list
                 List {
                     ForEach(categoryComponents) { component in
-                        NavigationLink(destination: KeyboardAccessoryDetailView(accessory: component)) {
+                        NavigationLink(destination: KeyboardAccessoryViewsDetailView(accessory: component)) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(component.name)
                                     .font(.headline)
@@ -143,7 +143,7 @@ struct KeyboardAccessoryItem: Identifiable {
 }
 
 // Detail view for a keyboard accessory
-struct KeyboardAccessoryDetailView: View {
+struct KeyboardAccessoryViewsDetailView: View {
     let accessory: KeyboardAccessoryItem
     
     var body: some View {
@@ -1103,13 +1103,7 @@ let keyboardAccessoryList: [KeyboardAccessoryItem] = [
     )
 ]
 
-// Helper extensions
-extension Font {
-    func italic(_ isItalic: Bool) -> Font {
-        return isItalic ? self.italic() : self
-    }
-}
-
+// Helper extensions for underline
 extension View {
     func underline(_ active: Bool = true) -> some View {
         if active {
