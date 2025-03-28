@@ -46,6 +46,7 @@ struct ContentView: View {
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
                     
+
                 }
             }
             .navigationTitle("Day One AI")
@@ -326,24 +327,40 @@ enum AIFeature: String, Identifiable {
 
 // Caption sheet view
 struct CaptionSheetView: View {
+    // Data properties
     let caption: String
     let description: String
     let focusCaption: Bool
     @State private var editedCaption: String
     @State private var editedDescription: String
+    @State private var isAIGenerated: Bool = true
+    @State private var showsWordCount: Bool = false
+    
+    // Environment properties
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    
+    // Focus states
     @FocusState private var isCaptionFocused: Bool
     @FocusState private var isDescriptionFocused: Bool
     
+    // Accent color
+    let accentColor = Color(hex: "44C0FF")
+    
+    // Word count computed property
+    var wordCount: Int {
+        editedDescription.split(separator: " ").count
+    }
+    
     // Helper function to calculate text height
     private func calculateTextHeight(text: String, width: CGFloat) -> CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        let font = UIFont.preferredFont(forTextStyle: .body)
         let textView = UITextView()
         textView.font = font
         textView.text = text
-        let size = CGSize(width: width - 16, height: .infinity) // 16 for padding
+        let size = CGSize(width: width - 32, height: .infinity) // 32 for padding
         let estimatedSize = textView.sizeThatFits(size)
-        return estimatedSize.height + 32 // add extra padding
+        return estimatedSize.height + 24 // add extra padding
     }
     
     init(caption: String, description: String = "", focusCaption: Bool = false) {
@@ -358,60 +375,187 @@ struct CaptionSheetView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Caption label and text field
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Caption")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                        
-                        TextField("Add a caption...", text: $editedCaption)
-                            .focused($isCaptionFocused)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .padding(10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                            )
-                            .padding(.horizontal)
+                    // Header info badge at the top
+                    if isAIGenerated {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundColor(accentColor)
+                            Text("AI Generated")
+                                .font(.footnote.weight(.medium))
+                                .foregroundColor(accentColor)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(accentColor.opacity(0.1))
+                        )
+                        .padding(.top, 8)
                     }
-                    .padding(.top, 12)
                     
-                    // Media description field
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Media Description")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    // Caption section
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Caption header
+                        HStack {
+                            Text("Caption")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Spacer()
+                            
+                            // Caption character count
+                            Text("\(editedCaption.count)/280")
+                                .font(.caption)
+                                .foregroundColor(editedCaption.count > 280 ? .red : .secondary)
+                        }
+                        .padding(.horizontal)
                         
-                        // Gray background with auto-expanding height TextEditor
-                        GeometryReader { geometry in
-                            ZStack(alignment: .topLeading) {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.gray.opacity(0.15))
-                                
-                                TextEditor(text: $editedDescription)
-                                    .focused($isDescriptionFocused)
-                                    .font(.footnote)
-                                    .foregroundColor(.primary)
-                                    .padding(8)
-                                    .background(Color.clear)
-                                    .frame(
-                                        minHeight: calculateTextHeight(
-                                            text: editedDescription,
-                                            width: geometry.size.width
-                                        )
+                        // Caption text field
+                        ZStack(alignment: .topLeading) {
+                            if editedCaption.isEmpty {
+                                Text("Add a caption...")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
+                            
+                            TextEditor(text: $editedCaption)
+                                .focused($isCaptionFocused)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .frame(minHeight: 44, maxHeight: 120)
+                                .padding(4)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.clear)
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(colorScheme == .dark 
+                                      ? Color(.systemGray6) 
+                                      : Color(.systemGray6).opacity(0.5))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(isCaptionFocused ? accentColor : Color.clear, lineWidth: 2)
+                        )
+                        .padding(.horizontal)
+                    }
+                    
+                    // Media Description section
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Description header with word count toggle
+                        HStack {
+                            Text("Media Description")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Spacer()
+                            
+                            if showsWordCount {
+                                // Word count badge
+                                Text("\(wordCount) words")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 8)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color(.systemGray5))
                                     )
                             }
+                            
+                            // Word count toggle
+                            Button {
+                                showsWordCount.toggle()
+                            } label: {
+                                Image(systemName: showsWordCount ? "number.circle.fill" : "number.circle")
+                                    .foregroundColor(showsWordCount ? accentColor : .secondary)
+                                    .font(.system(size: 20))
+                            }
                         }
-                        .frame(height: min(600, max(300, calculateTextHeight(text: editedDescription, width: UIScreen.main.bounds.width - 50))))
-                        .fixedSize(horizontal: false, vertical: true) // Allow vertical expansion
+                        .padding(.horizontal)
+                        
+                        // Description text editor
+                        ZStack(alignment: .topLeading) {
+                            if editedDescription.isEmpty {
+                                Text("Add a description...")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
+                            
+                            GeometryReader { geometry in
+                                TextEditor(text: $editedDescription)
+                                    .focused($isDescriptionFocused)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                    .frame(
+                                        minHeight: max(150, calculateTextHeight(
+                                            text: editedDescription,
+                                            width: geometry.size.width
+                                        ))
+                                    )
+                                    .scrollContentBackground(.hidden)
+                                    .background(Color.clear)
+                                    .padding(8)
+                            }
+                            .frame(minHeight: 150)
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(colorScheme == .dark 
+                                      ? Color(.systemGray6) 
+                                      : Color(.systemGray6).opacity(0.5))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(isDescriptionFocused ? accentColor : Color.clear, lineWidth: 2)
+                        )
+                        .padding(.horizontal)
+                        
+                        // Actions row
+                        HStack {
+                            // Regenerate button
+                            Button {
+                                // Regenerate description action
+                            } label: {
+                                Label("Regenerate", systemImage: "arrow.clockwise")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundColor(accentColor)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule()
+                                    .fill(accentColor.opacity(0.1))
+                            )
+                            
+                            Spacer()
+                            
+                            // Copy button
+                            Button {
+                                UIPasteboard.general.string = editedDescription
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Capsule()
+                                    .fill(Color(.systemGray5))
+                            )
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
                     }
-                    .padding(.horizontal)
                     
-                    // Add extra space to ensure content scrolls behind keyboard
-                    Spacer(minLength: 300)
+                    Spacer(minLength: 60)
                 }
+                .padding(.bottom, 20)
             }
             .onAppear {
                 // Set focus based on parameter
@@ -424,9 +568,18 @@ struct CaptionSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button("Save") {
                         dismiss()
                     }
+                    .fontWeight(.semibold)
+                    .foregroundColor(accentColor)
+                }
+                
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(.secondary)
                 }
             }
         }
