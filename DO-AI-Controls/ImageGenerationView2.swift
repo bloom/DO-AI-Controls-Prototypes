@@ -112,6 +112,10 @@ struct ImageGenerationView2: View {
             }
             .navigationTitle("Image Generation 2")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: selectedStyle) { oldValue, newValue in
+                // When style changes, advance all 3 carousels to next empty spot
+                advanceAllCarouselsToNextEmpty()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -128,6 +132,92 @@ struct ImageGenerationView2: View {
         .sheet(isPresented: $isSharePresented) {
             if let imageToShare = shareImage {
                 ActivityViewController(activityItems: [imageToShare])
+            }
+        }
+    }
+
+    // Helper method to advance all carousels to next empty spot
+    private func advanceAllCarouselsToNextEmpty() {
+        // Find next available placeholder in each row
+        let row1NextIndex = findNextAvailablePlaceholder(in: row1Images)
+        let row2NextIndex = findNextAvailablePlaceholder(in: row2Images)
+        let row3NextIndex = findNextAvailablePlaceholder(in: row3Images)
+
+        // Pre-mark as loading to prevent flashing
+        if row1NextIndex < row1Images.count && !row1Images[row1NextIndex].isLoading {
+            row1Images[row1NextIndex].isLoading = true
+        }
+        if row2NextIndex < row2Images.count && !row2Images[row2NextIndex].isLoading {
+            row2Images[row2NextIndex].isLoading = true
+        }
+        if row3NextIndex < row3Images.count && !row3Images[row3NextIndex].isLoading {
+            row3Images[row3NextIndex].isLoading = true
+        }
+
+        // Animate to those placeholders
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            row1CurrentPage = row1NextIndex
+            row2CurrentPage = row2NextIndex
+            row3CurrentPage = row3NextIndex
+        }
+
+        // Trigger generation after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            generateImageForRow(row: 1, index: row1NextIndex)
+            generateImageForRow(row: 2, index: row2NextIndex)
+            generateImageForRow(row: 3, index: row3NextIndex)
+        }
+    }
+
+    // Find the next available placeholder in an array
+    private func findNextAvailablePlaceholder(in images: [GeneratedImage]) -> Int {
+        // First look for any existing placeholder
+        for (index, image) in images.enumerated() {
+            if image.image == nil && !image.isLoading {
+                return index
+            }
+        }
+        // If no placeholder exists, return the last index
+        return images.count - 1
+    }
+
+    // Generate image for a specific row
+    private func generateImageForRow(row: Int, index: Int) {
+        switch row {
+        case 1:
+            guard index < row1Images.count else { return }
+            generateImageContent(for: $row1Images, at: index)
+        case 2:
+            guard index < row2Images.count else { return }
+            generateImageContent(for: $row2Images, at: index)
+        case 3:
+            guard index < row3Images.count else { return }
+            generateImageContent(for: $row3Images, at: index)
+        default:
+            break
+        }
+    }
+
+    // Generate image content for a specific row's images
+    private func generateImageContent(for images: Binding<[GeneratedImage]>, at index: Int) {
+        guard index < images.wrappedValue.count else { return }
+
+        // Simulate image generation with random colors
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .teal]
+            let randomColor = colors.randomElement() ?? .gray
+
+            let uiImage = UIImage.gradientImage(
+                bounds: CGRect(x: 0, y: 0, width: 400, height: 400),
+                colors: [
+                    UIColor(randomColor.opacity(0.7)),
+                    UIColor(randomColor)
+                ]
+            )
+
+            if let uiImage = uiImage {
+                images.wrappedValue[index].image = Image(uiImage: uiImage)
+                images.wrappedValue[index].isLoading = false
             }
         }
     }
