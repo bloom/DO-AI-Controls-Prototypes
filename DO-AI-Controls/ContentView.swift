@@ -23,7 +23,12 @@ struct ContentView: View {
                             print("Button tapped: Image Generation")
                             selectedFeature = .imageGeneration
                         }
-                        
+
+                        FeatureButton(title: "Image Generation 2", feature: .imageGeneration2, color: accentColor) {
+                            print("Button tapped: Image Generation 2")
+                            selectedFeature = .imageGeneration2
+                        }
+
                         FeatureButton(title: "Entry Summary", feature: .entrySummary, color: accentColor) {
                             selectedFeature = .entrySummary
                         }
@@ -69,6 +74,8 @@ struct ContentView: View {
                 switch feature {
                 case .imageGeneration:
                     ImageGenerationView()
+                case .imageGeneration2:
+                    ImageGenerationView2()
                 case .entrySummary:
                     EntrySummaryView()
                 case .transcribeAudio:
@@ -333,13 +340,14 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories
-    
+    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories
+
     var id: String { rawValue }
-    
+
     var title: String {
         switch self {
         case .imageGeneration: return "Image Generation"
+        case .imageGeneration2: return "Image Generation 2"
         case .entrySummary: return "Entry Summary"
         case .transcribeAudio: return "Transcribe Audio"
         case .photoDescription: return "Photo Description"
