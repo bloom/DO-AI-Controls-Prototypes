@@ -62,6 +62,11 @@ struct ContentView: View {
                             print("Keyboard Accessories button tapped")
                             selectedFeature = .keyboardAccessories
                         }
+
+                        FeatureButton(title: "Sliders", feature: .sliders, color: accentColor) {
+                            print("Sliders button tapped")
+                            selectedFeature = .sliders
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
@@ -90,6 +95,8 @@ struct ContentView: View {
                     PresentationMethodsView()
                 case .keyboardAccessories:
                     KeyboardAccessoriesView()
+                case .sliders:
+                    SlidersView()
                 }
             }
         }
@@ -340,7 +347,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories
+    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders
 
     var id: String { rawValue }
 
@@ -355,6 +362,7 @@ enum AIFeature: String, Identifiable {
         case .iOSNativeViews: return "iOS Native Views"
         case .presentationMethods: return "iOS Presentation Methods"
         case .keyboardAccessories: return "Keyboard Accessories"
+        case .sliders: return "Sliders"
         }
     }
 }
