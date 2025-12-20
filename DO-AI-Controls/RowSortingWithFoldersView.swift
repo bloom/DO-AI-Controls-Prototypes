@@ -285,7 +285,6 @@ struct RowSortingWithFoldersView: View {
                 currentIndex += 1 // Skip the folder row itself
 
                 // Check if displayIndex falls within this folder's contents
-                // Note: We don't add +1 anymore because drop zones handle end-of-folder drops
                 let folderEndIndex = currentIndex + folder.contents.count - 1
                 if displayIndex >= currentIndex && displayIndex <= folderEndIndex {
                     // displayIndex is inside this folder
@@ -293,8 +292,14 @@ struct RowSortingWithFoldersView: View {
                     return (folder, positionInFolder)
                 }
 
-                currentIndex += folder.contents.count
+                currentIndex += folder.contents.count  // Folder contents
+                currentIndex += 1  // Drop zone after expanded folder
+            } else if case .folder = rootItem {
+                // Collapsed folder
+                currentIndex += 1  // Folder row
+                currentIndex += 1  // Drop zone after collapsed folder
             } else {
+                // Regular row at root level
                 currentIndex += 1
             }
         }
