@@ -26,12 +26,31 @@ struct FolderItem: Identifiable, Equatable {
 enum ListItemType: Identifiable, Equatable {
     case row(RowItem)
     case folder(FolderItem)
+    case dropZone(UUID)  // Associated value is the folder's UUID
 
     var id: UUID {
         switch self {
-        case .row(let item): return item.id
-        case .folder(let item): return item.id
+        case .row(let item):
+            return item.id
+        case .folder(let item):
+            return item.id
+        case .dropZone(let folderId):
+            // Create a unique ID by combining folder ID with a namespace
+            // This ensures drop zones don't collide with folder IDs
+            return UUID(uuidString: "00000000-0000-0000-0000-\(folderId.uuidString.suffix(12))")!
         }
+    }
+}
+
+// MARK: - Drop Intent
+
+enum DropIntent {
+    case intoFolder(folderId: UUID, position: InsertPosition)
+    case atRootLevel(position: Int)
+
+    enum InsertPosition {
+        case at(Int)      // Specific position in array
+        case end          // Append to end
     }
 }
 
@@ -64,6 +83,8 @@ struct RowSortingWithFoldersView: View {
                                 toggleFolder(id: folder.id)
                             }
                         )
+                    case .dropZone:
+                        DropZoneView(accentColor: accentColor)
                     }
                 }
                 .onMove(perform: moveItem)
@@ -154,44 +175,103 @@ struct RowSortingWithFoldersView: View {
 
         let movedItem = items[sourceIndex]
 
-        // Step 1: Remove item from its current location (rootItems or a folder)
-        removeItemFromSource(movedItem)
-
-        // Step 2: Determine destination and add item there
-        // Adjust destination index after removal
-        let adjustedDestination = sourceIndex < destination ? destination - 1 : destination
-
-        // Determine where we're dropping
-        // First check if destination is inside an expanded folder
-        if let (parentFolder, positionInFolder) = findParentFolder(at: adjustedDestination) {
-            // Dropping inside an expanded folder
-            if case .row(let row) = movedItem {
-                var updatedFolder = parentFolder
-                updatedFolder.contents.insert(row, at: min(positionInFolder, updatedFolder.contents.count))
-                folders[updatedFolder.id] = updatedFolder
-                // Update folder in rootItems
-                if let rootIndex = rootItems.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == updatedFolder.id { return true }
-                    return false
-                }) {
-                    rootItems[rootIndex] = .folder(updatedFolder)
-                }
-            } else if case .folder = movedItem {
-                // Can't put folder inside folder - add it to rootItems after the parent folder
-                if let rootIndex = rootItems.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == parentFolder.id { return true }
-                    return false
-                }) {
-                    rootItems.insert(movedItem, at: rootIndex + 1)
-                }
-            }
-        } else {
-            // Dropping in the list (not on/in a folder) - add to rootItems
-            let rootDestIndex = mapDisplayIndexToRootIndex(adjustedDestination)
-            rootItems.insert(movedItem, at: min(rootDestIndex, rootItems.count))
+        // Don't allow dragging drop zones
+        if case .dropZone = movedItem {
+            return
         }
 
+        // STEP 1: Determine what the user wants BEFORE modifying anything
+        let intent = determineDropIntent(destination: destination, movingFrom: sourceIndex)
+
+        // STEP 2: Remove item from current location
+        removeItemFromSource(movedItem)
+
+        // STEP 3: Insert at destination based on intent
+        insertItem(movedItem, intent: intent)
+
+        // STEP 4: Rebuild display
         rebuildFlatList()
+    }
+
+    func determineDropIntent(destination: Int, movingFrom sourceIndex: Int) -> DropIntent {
+        // Use destination directly to see what we're inserting BEFORE
+        guard destination < items.count else {
+            // Dropping at the end
+            return .atRootLevel(position: rootItems.count)
+        }
+
+        let targetItem = items[destination]
+        let sourceParentFolder = findParentFolder(at: sourceIndex)
+
+        switch targetItem {
+        case .dropZone(let folderId):
+            // Rule 1: Dropping before a drop zone = add to folder at end
+            return .intoFolder(folderId: folderId, position: .end)
+
+        case .row:
+            // Rule 2: Check if this row is inside a folder
+            if let (folder, positionInFolder) = findParentFolder(at: destination) {
+                // Dropping inside a folder at specific position
+                // Adjust position if moving within same folder
+                var adjustedPosition = positionInFolder
+                if let (sourceFolder, sourcePosition) = sourceParentFolder,
+                   sourceFolder.id == folder.id,
+                   sourcePosition < positionInFolder {
+                    // Moving down within same folder - position shifts after removal
+                    adjustedPosition -= 1
+                }
+                return .intoFolder(folderId: folder.id, position: .at(adjustedPosition))
+            } else {
+                // Row is at root level - insert before it
+                var rootPosition = mapDisplayIndexToRootIndex(destination)
+                // Adjust if source is at root level and before destination
+                if sourceParentFolder == nil, sourceIndex < destination {
+                    rootPosition -= 1
+                }
+                return .atRootLevel(position: rootPosition)
+            }
+
+        case .folder:
+            // Rule 3: Dropping before a folder = root level
+            var rootPosition = mapDisplayIndexToRootIndex(destination)
+            // Adjust if source is at root level and before destination
+            if sourceParentFolder == nil, sourceIndex < destination {
+                rootPosition -= 1
+            }
+            return .atRootLevel(position: rootPosition)
+        }
+    }
+
+    func insertItem(_ item: ListItemType, intent: DropIntent) {
+        switch intent {
+        case .intoFolder(let folderId, let position):
+            guard case .row(let row) = item else {
+                // Can't put folders inside folders - fall back to root
+                rootItems.append(item)
+                return
+            }
+
+            guard var folder = folders[folderId] else { return }
+
+            switch position {
+            case .at(let index):
+                folder.contents.insert(row, at: min(index, folder.contents.count))
+            case .end:
+                folder.contents.append(row)
+            }
+
+            // Update folder in both dictionaries and rootItems
+            folders[folderId] = folder
+            if let rootIndex = rootItems.firstIndex(where: {
+                if case .folder(let f) = $0, f.id == folderId { return true }
+                return false
+            }) {
+                rootItems[rootIndex] = .folder(folder)
+            }
+
+        case .atRootLevel(let position):
+            rootItems.insert(item, at: min(position, rootItems.count))
+        }
     }
 
     func findParentFolder(at displayIndex: Int) -> (FolderItem, Int)? {
@@ -202,12 +282,12 @@ struct RowSortingWithFoldersView: View {
         for rootItem in rootItems {
             if case .folder(let folder) = rootItem, folder.isExpanded {
                 // This folder starts at currentIndex, its contents follow
-                let folderStartIndex = currentIndex
                 currentIndex += 1 // Skip the folder row itself
 
                 // Check if displayIndex falls within this folder's contents
+                // Note: We don't add +1 anymore because drop zones handle end-of-folder drops
                 let folderEndIndex = currentIndex + folder.contents.count - 1
-                if displayIndex >= currentIndex && displayIndex <= folderEndIndex + 1 {
+                if displayIndex >= currentIndex && displayIndex <= folderEndIndex {
                     // displayIndex is inside this folder
                     let positionInFolder = displayIndex - currentIndex
                     return (folder, positionInFolder)
@@ -261,9 +341,12 @@ struct RowSortingWithFoldersView: View {
 
             currentDisplayIndex += 1 // Count the root item itself
 
-            // If it's an expanded folder, skip its contents in the display
-            if case .folder(let folder) = rootItem, folder.isExpanded {
-                currentDisplayIndex += folder.contents.count
+            // If it's a folder, skip its contents (if expanded) and always skip drop zone
+            if case .folder(let folder) = rootItem {
+                if folder.isExpanded {
+                    currentDisplayIndex += folder.contents.count
+                }
+                currentDisplayIndex += 1  // Always skip drop zone after folder
             }
 
             rootCount += 1
@@ -279,9 +362,14 @@ struct RowSortingWithFoldersView: View {
         for item in rootItems {
             newItems.append(item)
 
-            if case .folder(let folder) = item, folder.isExpanded {
-                // Add folder contents
-                newItems.append(contentsOf: folder.contents.map { .row($0) })
+            if case .folder(let folder) = item {
+                if folder.isExpanded {
+                    // Expanded: show contents
+                    newItems.append(contentsOf: folder.contents.map { .row($0) })
+                }
+                // Always add drop zone after folder (whether expanded or collapsed)
+                // This allows dropping after folder contents to exit the folder
+                newItems.append(.dropZone(folder.id))
             }
         }
 
@@ -410,6 +498,26 @@ struct FolderCellView: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+    }
+}
+
+struct DropZoneView: View {
+    let accentColor: Color
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(height: 20)
+            .overlay(
+                Rectangle()
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                    )
+                    .foregroundColor(accentColor.opacity(0.3))
+                    .padding(.horizontal, 16)
+            )
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
     }
 }
 
