@@ -67,6 +67,11 @@ struct ContentView: View {
                             print("Sliders button tapped")
                             selectedFeature = .sliders
                         }
+
+                        FeatureButton(title: "Standard Row Features", feature: .standardRowFeatures, color: accentColor) {
+                            print("Standard Row Features button tapped")
+                            selectedFeature = .standardRowFeatures
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
@@ -97,6 +102,8 @@ struct ContentView: View {
                     KeyboardAccessoriesView()
                 case .sliders:
                     SlidersView()
+                case .standardRowFeatures:
+                    StandardRowFeaturesView()
                 }
             }
         }
@@ -347,7 +354,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders
+    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders, standardRowFeatures
 
     var id: String { rawValue }
 
@@ -363,6 +370,7 @@ enum AIFeature: String, Identifiable {
         case .presentationMethods: return "iOS Presentation Methods"
         case .keyboardAccessories: return "Keyboard Accessories"
         case .sliders: return "Sliders"
+        case .standardRowFeatures: return "Standard Row Features"
         }
     }
 }
