@@ -39,7 +39,8 @@ enum ListItemType: Identifiable, Equatable {
 
 struct RowSortingWithFoldersView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var items: [ListItemType] = []
+    @State private var rootItems: [ListItemType] = [] // Source of truth: only top-level items
+    @State private var items: [ListItemType] = [] // Display array: flattened with expansions
     @State private var folders: [UUID: FolderItem] = [:]
 
     let accentColor = Color(hex: "44C0FF")
@@ -83,7 +84,7 @@ struct RowSortingWithFoldersView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .onAppear {
-            if items.isEmpty {
+            if rootItems.isEmpty {
                 initializeDefaultState()
             }
         }
@@ -112,7 +113,7 @@ struct RowSortingWithFoldersView: View {
         )
         folders[folderTwo.id] = folderTwo
 
-        // Build initial flat list: A, B, [Folder One], E, [Folder Two], H-T
+        // Build initial root list: A, B, [Folder One], E, [Folder Two], H-T
         var initialItems: [ListItemType] = []
         initialItems.append(.row(allRows[0])) // A
         initialItems.append(.row(allRows[1])) // B
@@ -124,22 +125,23 @@ struct RowSortingWithFoldersView: View {
             initialItems.append(.row(allRows[i]))
         }
 
-        items = initialItems
+        rootItems = initialItems
+        rebuildFlatList()
     }
 
     func toggleFolder(id: UUID) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            // Find folder in items array
-            if let index = items.firstIndex(where: {
+            // Find folder in rootItems array
+            if let index = rootItems.firstIndex(where: {
                 if case .folder(let f) = $0, f.id == id {
                     return true
                 }
                 return false
             }) {
-                if case .folder(var folder) = items[index] {
+                if case .folder(var folder) = rootItems[index] {
                     folder.isExpanded.toggle()
                     folders[folder.id] = folder
-                    items[index] = .folder(folder)
+                    rootItems[index] = .folder(folder)
                     rebuildFlatList()
                 }
             }
@@ -148,76 +150,156 @@ struct RowSortingWithFoldersView: View {
 
     func moveItem(from source: IndexSet, to destination: Int) {
         guard let sourceIndex = source.first else { return }
-
-        // Don't allow moving if indices are invalid
         guard sourceIndex < items.count else { return }
 
         let movedItem = items[sourceIndex]
 
-        // Remove item from source location first
-        items.remove(at: sourceIndex)
+        // Step 1: Remove item from its current location (rootItems or a folder)
+        removeItemFromSource(movedItem)
 
-        // Adjust destination if needed (removal shifts indices)
+        // Step 2: Determine destination and add item there
+        // Adjust destination index after removal
         let adjustedDestination = sourceIndex < destination ? destination - 1 : destination
 
-        // Determine if we're dropping on a collapsed folder
-        if adjustedDestination < items.count,
-           case .folder(var targetFolder) = items[adjustedDestination],
-           !targetFolder.isExpanded {
-            // Drop ON folder: add to folder's contents
+        // Determine where we're dropping
+        // First check if destination is inside an expanded folder
+        if let (parentFolder, positionInFolder) = findParentFolder(at: adjustedDestination) {
+            // Dropping inside an expanded folder
+            if case .row(let row) = movedItem {
+                var updatedFolder = parentFolder
+                updatedFolder.contents.insert(row, at: min(positionInFolder, updatedFolder.contents.count))
+                folders[updatedFolder.id] = updatedFolder
+                // Update folder in rootItems
+                if let rootIndex = rootItems.firstIndex(where: {
+                    if case .folder(let f) = $0, f.id == updatedFolder.id { return true }
+                    return false
+                }) {
+                    rootItems[rootIndex] = .folder(updatedFolder)
+                }
+            } else if case .folder = movedItem {
+                // Can't put folder inside folder - add it to rootItems after the parent folder
+                if let rootIndex = rootItems.firstIndex(where: {
+                    if case .folder(let f) = $0, f.id == parentFolder.id { return true }
+                    return false
+                }) {
+                    rootItems.insert(movedItem, at: rootIndex + 1)
+                }
+            }
+        } else if adjustedDestination < items.count,
+                  case .folder(var targetFolder) = items[adjustedDestination],
+                  !targetFolder.isExpanded {
+            // Drop ON a collapsed folder: add to folder's contents
             if case .row(let row) = movedItem {
                 targetFolder.contents.append(row)
                 folders[targetFolder.id] = targetFolder
-                items[adjustedDestination] = .folder(targetFolder)
-            } else {
-                // Can't put folder inside folder, just insert after
-                items.insert(movedItem, at: adjustedDestination)
-            }
-        } else {
-            // Standard reorder in list
-            items.insert(movedItem, at: adjustedDestination)
-        }
-
-        // Clean up: remove rows from folders if they were dragged out
-        cleanupFolders()
-    }
-
-    func cleanupFolders() {
-        // Get all row IDs currently in the flat list
-        let rowIdsInList = items.compactMap { item -> UUID? in
-            if case .row(let row) = item {
-                return row.id
-            }
-            return nil
-        }
-
-        // Remove those rows from folders
-        for (folderId, var folder) in folders {
-            let originalCount = folder.contents.count
-            folder.contents.removeAll { row in
-                rowIdsInList.contains(row.id)
-            }
-
-            if folder.contents.count != originalCount {
-                folders[folderId] = folder
-                // Update folder in items array
-                if let index = items.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == folderId {
-                        return true
-                    }
+                // Update folder in rootItems
+                if let rootIndex = rootItems.firstIndex(where: {
+                    if case .folder(let f) = $0, f.id == targetFolder.id { return true }
                     return false
                 }) {
-                    items[index] = .folder(folder)
+                    rootItems[rootIndex] = .folder(targetFolder)
+                }
+            } else if case .folder = movedItem {
+                // Can't put folder inside folder - add it to rootItems after the target folder
+                if let rootIndex = rootItems.firstIndex(where: {
+                    if case .folder(let f) = $0, f.id == targetFolder.id { return true }
+                    return false
+                }) {
+                    rootItems.insert(movedItem, at: rootIndex + 1)
+                }
+            }
+        } else {
+            // Dropping in the list (not on/in a folder) - add to rootItems
+            let rootDestIndex = mapDisplayIndexToRootIndex(adjustedDestination)
+            rootItems.insert(movedItem, at: min(rootDestIndex, rootItems.count))
+        }
+
+        rebuildFlatList()
+    }
+
+    func findParentFolder(at displayIndex: Int) -> (FolderItem, Int)? {
+        // Check if displayIndex is inside an expanded folder
+        // Returns (folder, position within folder) if inside a folder, nil otherwise
+        var currentIndex = 0
+
+        for rootItem in rootItems {
+            if case .folder(let folder) = rootItem, folder.isExpanded {
+                // This folder starts at currentIndex, its contents follow
+                let folderStartIndex = currentIndex
+                currentIndex += 1 // Skip the folder row itself
+
+                // Check if displayIndex falls within this folder's contents
+                let folderEndIndex = currentIndex + folder.contents.count - 1
+                if displayIndex >= currentIndex && displayIndex <= folderEndIndex + 1 {
+                    // displayIndex is inside this folder
+                    let positionInFolder = displayIndex - currentIndex
+                    return (folder, positionInFolder)
+                }
+
+                currentIndex += folder.contents.count
+            } else {
+                currentIndex += 1
+            }
+        }
+
+        return nil
+    }
+
+    func removeItemFromSource(_ item: ListItemType) {
+        // Try to remove from rootItems first
+        if let rootIndex = rootItems.firstIndex(where: { $0.id == item.id }) {
+            rootItems.remove(at: rootIndex)
+            return
+        }
+
+        // Otherwise, it must be inside a folder - remove from folder contents
+        if case .row(let row) = item {
+            for (folderId, var folder) in folders {
+                if let rowIndex = folder.contents.firstIndex(where: { $0.id == row.id }) {
+                    folder.contents.remove(at: rowIndex)
+                    folders[folderId] = folder
+                    // Update folder in rootItems
+                    if let rootIndex = rootItems.firstIndex(where: {
+                        if case .folder(let f) = $0, f.id == folderId { return true }
+                        return false
+                    }) {
+                        rootItems[rootIndex] = .folder(folder)
+                    }
+                    return
                 }
             }
         }
+    }
+
+    func mapDisplayIndexToRootIndex(_ displayIndex: Int) -> Int {
+        // Map from items (display) index to rootItems index
+        // Count how many rootItems appear before this displayIndex
+        var rootCount = 0
+        var currentDisplayIndex = 0
+
+        for rootItem in rootItems {
+            if currentDisplayIndex >= displayIndex {
+                break
+            }
+
+            currentDisplayIndex += 1 // Count the root item itself
+
+            // If it's an expanded folder, skip its contents in the display
+            if case .folder(let folder) = rootItem, folder.isExpanded {
+                currentDisplayIndex += folder.contents.count
+            }
+
+            rootCount += 1
+        }
+
+        return rootCount
     }
 
     func rebuildFlatList() {
         // Rebuild the flat list based on expanded state
         var newItems: [ListItemType] = []
 
-        for item in items {
+        for item in rootItems {
             newItems.append(item)
 
             if case .folder(let folder) = item, folder.isExpanded {
@@ -231,14 +313,18 @@ struct RowSortingWithFoldersView: View {
 
     func isItemInExpandedFolder(at index: Int) -> Bool {
         // Walk backwards from index to find if we're inside an expanded folder
+        var itemsSeenSinceFolder = 0
+
         for i in stride(from: index - 1, through: 0, by: -1) {
             if case .folder(let folder) = items[i] {
                 if folder.isExpanded {
-                    return true
+                    // Check if we're within this folder's contents
+                    return itemsSeenSinceFolder < folder.contents.count
                 } else {
                     return false
                 }
             }
+            itemsSeenSinceFolder += 1
         }
         return false
     }
