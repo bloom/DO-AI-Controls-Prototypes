@@ -355,11 +355,6 @@ struct RowCellView: View {
                 .font(.body)
 
             Spacer()
-
-            // Drag handle
-            Image(systemName: "line.3.horizontal")
-                .foregroundColor(.secondary)
-                .font(.system(size: 16))
         }
         .padding(.vertical, 8)
     }
@@ -411,12 +406,6 @@ struct FolderCellView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.secondary)
                 .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
-
-            // Drag handle
-            Image(systemName: "line.3.horizontal")
-                .foregroundColor(.secondary)
-                .font(.system(size: 16))
-                .padding(.leading, 8)
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
