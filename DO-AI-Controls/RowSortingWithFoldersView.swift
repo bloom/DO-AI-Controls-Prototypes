@@ -185,29 +185,6 @@ struct RowSortingWithFoldersView: View {
                     rootItems.insert(movedItem, at: rootIndex + 1)
                 }
             }
-        } else if adjustedDestination < items.count,
-                  case .folder(var targetFolder) = items[adjustedDestination],
-                  !targetFolder.isExpanded {
-            // Drop ON a collapsed folder: add to folder's contents
-            if case .row(let row) = movedItem {
-                targetFolder.contents.append(row)
-                folders[targetFolder.id] = targetFolder
-                // Update folder in rootItems
-                if let rootIndex = rootItems.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == targetFolder.id { return true }
-                    return false
-                }) {
-                    rootItems[rootIndex] = .folder(targetFolder)
-                }
-            } else if case .folder = movedItem {
-                // Can't put folder inside folder - add it to rootItems after the target folder
-                if let rootIndex = rootItems.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == targetFolder.id { return true }
-                    return false
-                }) {
-                    rootItems.insert(movedItem, at: rootIndex + 1)
-                }
-            }
         } else {
             // Dropping in the list (not on/in a folder) - add to rootItems
             let rootDestIndex = mapDisplayIndexToRootIndex(adjustedDestination)
