@@ -72,6 +72,11 @@ struct ContentView: View {
                             print("Standard Row Features button tapped")
                             selectedFeature = .standardRowFeatures
                         }
+
+                        FeatureButton(title: "Row Sorting with Folders", feature: .rowSortingWithFolders, color: accentColor) {
+                            print("Row Sorting with Folders button tapped")
+                            selectedFeature = .rowSortingWithFolders
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
@@ -104,6 +109,8 @@ struct ContentView: View {
                     SlidersView()
                 case .standardRowFeatures:
                     StandardRowFeaturesView()
+                case .rowSortingWithFolders:
+                    RowSortingWithFoldersView()
                 }
             }
         }
@@ -354,7 +361,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders, standardRowFeatures
+    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders, standardRowFeatures, rowSortingWithFolders
 
     var id: String { rawValue }
 
@@ -371,6 +378,7 @@ enum AIFeature: String, Identifiable {
         case .keyboardAccessories: return "Keyboard Accessories"
         case .sliders: return "Sliders"
         case .standardRowFeatures: return "Standard Row Features"
+        case .rowSortingWithFolders: return "Row Sorting with Folders"
         }
     }
 }
