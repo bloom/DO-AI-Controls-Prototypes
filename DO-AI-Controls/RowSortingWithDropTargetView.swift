@@ -212,6 +212,14 @@ struct EditModalView: View {
             .navigationTitle("Edit Order")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        addNewFolder()
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                            .foregroundColor(accentColor)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         saveAndDismiss()
@@ -507,6 +515,32 @@ struct EditModalView: View {
                 rootItems[index] = .folder(folder)
                 buildEditableList()
             }
+        }
+    }
+
+    func addNewFolder() {
+        // Find the next folder letter (C, D, E, etc.)
+        let existingFolderNames = folders.values.map { $0.name }
+        var folderLetter = "C"
+        var letterCode = Character("C").asciiValue!
+
+        while existingFolderNames.contains("Folder \(folderLetter)") {
+            letterCode += 1
+            folderLetter = String(UnicodeScalar(letterCode))
+        }
+
+        // Create new folder
+        let newFolder = FolderNode(name: "Folder \(folderLetter)", contents: [], isExpanded: false)
+
+        // Add to folders dictionary
+        folders[newFolder.id] = newFolder
+
+        // Append to rootItems
+        rootItems.append(.folder(newFolder))
+
+        // Rebuild editable list
+        withAnimation {
+            buildEditableList()
         }
     }
 
