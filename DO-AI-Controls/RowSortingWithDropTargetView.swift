@@ -203,20 +203,45 @@ struct EditModalView: View {
     // Display list cache for performance
     @State private var displayListCache: (stateHash: Int, result: [DisplayNode])? = nil
 
+    // Multi-select state
+    @State private var isMultiSelectMode: Bool = false
+    @State private var selectedItems: Set<UUID> = []
+
+    // Undo/redo state
+    @State private var undoStack: [(rootItems: [DisplayNode], folders: [UUID: FolderNode])] = []
+    @State private var redoStack: [(rootItems: [DisplayNode], folders: [UUID: FolderNode])] = []
+
     var body: some View {
         NavigationStack {
             List {
                 ForEach(editableItems) { item in
                     switch item {
                     case .file(let file):
-                        FileRowView(file: file, accentColor: accentColor)
+                        FileRowView(
+                            file: file,
+                            accentColor: accentColor,
+                            isMultiSelectMode: isMultiSelectMode,
+                            isSelected: selectedItems.contains(file.id),
+                            onSelect: {
+                                if selectedItems.contains(file.id) {
+                                    selectedItems.remove(file.id)
+                                } else {
+                                    selectedItems.insert(file.id)
+                                }
+                            }
+                        )
                     case .folder(let folder):
                         FolderRowView(
                             folder: folder,
                             accentColor: accentColor,
                             isRenaming: renamingFolderId == folder.id,
                             renameFocused: $renameFocused,
-                            onTap: { toggleFolder(id: folder.id) },
+                            isMultiSelectMode: false, // Don't show selectors on folders
+                            isSelected: false,
+                            onTap: {
+                                // In multi-select, folders still expand/collapse normally
+                                toggleFolder(id: folder.id)
+                            },
                             onRename: {
                                 renamingFolderId = folder.id
                                 renameFocused = true
@@ -234,7 +259,7 @@ struct EditModalView: View {
                         )
                     }
                 }
-                .onMove(perform: moveItem)
+                .onMove(perform: isMultiSelectMode ? nil : moveItem)
             }
             .listStyle(.plain)
             .environment(\.editMode, .constant(.active))
@@ -242,11 +267,39 @@ struct EditModalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        addNewFolder()
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
-                            .foregroundColor(accentColor)
+                    HStack(spacing: 16) {
+                        Button {
+                            addNewFolder()
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundColor(accentColor)
+                        }
+
+                        Button {
+                            isMultiSelectMode.toggle()
+                            if !isMultiSelectMode {
+                                selectedItems.removeAll()
+                            }
+                        } label: {
+                            Image(systemName: isMultiSelectMode ? "checkmark.circle.fill" : "checkmark.circle")
+                                .foregroundColor(accentColor)
+                        }
+
+                        Button {
+                            performUndo()
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .foregroundColor(undoStack.isEmpty ? .gray : accentColor)
+                        }
+                        .disabled(undoStack.isEmpty)
+
+                        Button {
+                            performRedo()
+                        } label: {
+                            Image(systemName: "arrow.uturn.forward")
+                                .foregroundColor(redoStack.isEmpty ? .gray : accentColor)
+                        }
+                        .disabled(redoStack.isEmpty)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -254,6 +307,43 @@ struct EditModalView: View {
                         saveAndDismiss()
                     }
                     .foregroundColor(accentColor)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if isMultiSelectMode {
+                    VStack(spacing: 0) {
+                        Divider()
+                        HStack {
+                            Text("\(selectedItems.count) selected")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+
+                            Spacer()
+
+                            Menu {
+                                ForEach(Array(folders.values.sorted(by: { $0.name < $1.name })), id: \.id) { folder in
+                                    Button {
+                                        moveSelectedItemsToFolder(folderId: folder.id)
+                                    } label: {
+                                        Label(folder.name, systemImage: "folder")
+                                    }
+                                }
+                            } label: {
+                                Text("Move to...")
+                                    .font(.body)
+                                    .foregroundColor(selectedItems.isEmpty ? .gray : accentColor)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(accentColor.opacity(0.1))
+                                    )
+                            }
+                            .disabled(selectedItems.isEmpty || folders.isEmpty)
+                        }
+                        .padding()
+                        .background(Color(UIColor.systemBackground))
+                    }
                 }
             }
         }
@@ -353,6 +443,9 @@ struct EditModalView: View {
             }
             return
         }
+
+        // Record state for undo before making any changes
+        recordStateForUndo()
 
         // Handle folder moves
         if case .folder(let folder) = movedItem {
@@ -632,6 +725,7 @@ struct EditModalView: View {
     }
 
     func toggleFolder(id: UUID) {
+        recordStateForUndo()
         if let index = findFolderIndex(id: id),
            case .folder(var folder) = rootItems[index] {
             folder.isExpanded.toggle()
@@ -641,6 +735,7 @@ struct EditModalView: View {
     }
 
     func addNewFolder() {
+        recordStateForUndo()
         // Find the next folder letter (C, D, E, etc.)
         let existingFolderNames = folders.values.map { $0.name }
         var folderLetter = "C"
@@ -680,6 +775,8 @@ struct EditModalView: View {
     func deleteFolder(id: UUID) {
         guard let folder = getFolder(id: id) else { return }
 
+        recordStateForUndo()
+
         withAnimation {
             // Move all folder contents to root level
             // Insert at the position where the folder currently is
@@ -704,12 +801,136 @@ struct EditModalView: View {
     func saveFolderName(id: UUID, newName: String) {
         guard var folder = getFolder(id: id), !newName.isEmpty else { return }
 
+        recordStateForUndo()
+
         withAnimation {
             // Update folder name
             folder.name = newName
             updateFolder(folder)
 
             // Rebuild list
+            buildEditableList()
+        }
+    }
+
+    // MARK: - Undo/Redo Operations
+
+    /// Records the current state to the undo stack before making a change
+    func recordStateForUndo() {
+        // Deep copy the current state
+        let snapshot = (rootItems: rootItems, folders: folders)
+        undoStack.append(snapshot)
+
+        // Limit undo stack to 50 items to prevent memory issues
+        if undoStack.count > 50 {
+            undoStack.removeFirst()
+        }
+
+        // Clear redo stack when new action is performed
+        redoStack.removeAll()
+    }
+
+    /// Undoes the last operation
+    func performUndo() {
+        guard let previousState = undoStack.popLast() else { return }
+
+        // Save current state to redo stack
+        redoStack.append((rootItems: rootItems, folders: folders))
+
+        // Restore previous state
+        withAnimation {
+            rootItems = previousState.rootItems
+            folders = previousState.folders
+            buildEditableList()
+        }
+    }
+
+    /// Redoes the last undone operation
+    func performRedo() {
+        guard let nextState = redoStack.popLast() else { return }
+
+        // Save current state to undo stack
+        undoStack.append((rootItems: rootItems, folders: folders))
+
+        // Restore next state
+        withAnimation {
+            rootItems = nextState.rootItems
+            folders = nextState.folders
+            buildEditableList()
+        }
+    }
+
+    // MARK: - Multi-Select Operations
+
+    /// Moves all selected items to the specified folder
+    /// - Parameter folderId: The UUID of the destination folder
+    func moveSelectedItemsToFolder(folderId: UUID) {
+        guard !selectedItems.isEmpty else { return }
+        guard folders[folderId] != nil else { return }
+
+        recordStateForUndo()
+
+        withAnimation {
+            for itemId in selectedItems {
+                // Find and move files from root
+                if let fileIndex = rootItems.firstIndex(where: {
+                    if case .file(let f) = $0, f.id == itemId { return true }
+                    return false
+                }), case .file(let file) = rootItems[fileIndex] {
+                    moveFileIntoFolder(file: file, folderId: folderId, position: nil)
+                }
+
+                // Also check in other folders
+                for (_, folder) in folders {
+                    if let fileInFolder = folder.contents.first(where: { $0.id == itemId }) {
+                        moveFileIntoFolder(file: fileInFolder, folderId: folderId, position: nil)
+                        break
+                    }
+                }
+            }
+
+            selectedItems.removeAll()
+            isMultiSelectMode = false
+            buildEditableList()
+        }
+    }
+
+    /// Deletes all selected items
+    /// Files are removed permanently, folders have their contents moved to root
+    func deleteSelectedItems() {
+        guard !selectedItems.isEmpty else { return }
+
+        recordStateForUndo()
+
+        withAnimation {
+            for itemId in selectedItems {
+                // Delete folders (which moves contents to root)
+                if folders[itemId] != nil {
+                    deleteFolder(id: itemId)
+                    continue
+                }
+
+                // Delete files
+                if let fileIndex = rootItems.firstIndex(where: {
+                    if case .file(let f) = $0, f.id == itemId { return true }
+                    return false
+                }) {
+                    rootItems.remove(at: fileIndex)
+                    continue
+                }
+
+                // Also check in folders
+                for (folderId, var folder) in folders {
+                    if let indexInFolder = folder.contents.firstIndex(where: { $0.id == itemId }) {
+                        folder.contents.remove(at: indexInFolder)
+                        updateFolder(folder)
+                        break
+                    }
+                }
+            }
+
+            selectedItems.removeAll()
+            isMultiSelectMode = false
             buildEditableList()
         }
     }
@@ -750,9 +971,18 @@ struct EditModalView: View {
 struct FileRowView: View {
     let file: FileNode
     let accentColor: Color
+    var isMultiSelectMode: Bool = false
+    var isSelected: Bool = false
+    var onSelect: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
+            if isMultiSelectMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? accentColor : .gray)
+                    .font(.title3)
+            }
+
             Circle()
                 .fill(gradientForFile(file.name))
                 .frame(width: 32, height: 32)
@@ -769,10 +999,17 @@ struct FileRowView: View {
             Spacer()
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isMultiSelectMode, let onSelect = onSelect {
+                onSelect()
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("File: \(file.name)")
-        .accessibilityHint("Double-tap to select, drag to move")
+        .accessibilityHint(isMultiSelectMode ? "Double-tap to \(isSelected ? "deselect" : "select")" : "Double-tap to select, drag to move")
         .accessibilityAddTraits(.isButton)
+        .accessibilityValue(isMultiSelectMode && isSelected ? "Selected" : "")
     }
 
     func gradientForFile(_ name: String) -> LinearGradient {
@@ -800,6 +1037,8 @@ struct FolderRowView: View {
     let accentColor: Color
     var isRenaming: Bool = false
     var renameFocused: FocusState<Bool>.Binding? = nil
+    var isMultiSelectMode: Bool = false
+    var isSelected: Bool = false
     let onTap: () -> Void
     var onRename: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
@@ -809,6 +1048,12 @@ struct FolderRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            if isMultiSelectMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? accentColor : .gray)
+                    .font(.title3)
+            }
+
             Image(systemName: "folder.fill")
                 .font(.body)
                 .foregroundColor(accentColor)
