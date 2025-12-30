@@ -184,6 +184,8 @@ struct EditModalView: View {
     let accentColor: Color
 
     @State private var editableItems: [DisplayNode] = []
+    @State private var renamingFolderId: UUID?
+    @FocusState private var renameFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -196,7 +198,18 @@ struct EditModalView: View {
                         FolderRowView(
                             folder: folder,
                             accentColor: accentColor,
-                            onTap: { toggleFolder(id: folder.id) }
+                            isRenaming: renamingFolderId == folder.id,
+                            renameFocused: $renameFocused,
+                            onTap: { toggleFolder(id: folder.id) },
+                            onRename: {
+                                renamingFolderId = folder.id
+                                renameFocused = true
+                            },
+                            onDelete: { deleteFolder(id: folder.id) },
+                            onRenameSave: { newName in
+                                saveFolderName(id: folder.id, newName: newName)
+                                renamingFolderId = nil
+                            }
                         )
                     case .dropZone(let folderId):
                         DropZoneRowView(
@@ -542,11 +555,65 @@ struct EditModalView: View {
         withAnimation {
             buildEditableList()
         }
+
+        // Auto-enter rename mode for the new folder
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.renamingFolderId = newFolder.id
+            self.renameFocused = true
+        }
     }
 
     func saveAndDismiss() {
         // Changes are already reflected in bindings
         dismiss()
+    }
+
+    func deleteFolder(id: UUID) {
+        guard let folder = folders[id] else { return }
+
+        withAnimation {
+            // Move all folder contents to root level
+            // Insert at the position where the folder currently is
+            if let folderIndex = rootItems.firstIndex(where: {
+                if case .folder(let f) = $0, f.id == id { return true }
+                return false
+            }) {
+                // Insert files at the folder's position (they'll appear where the folder was)
+                for (index, file) in folder.contents.enumerated() {
+                    rootItems.insert(.file(file), at: folderIndex + index)
+                }
+
+                // Remove the folder itself (add offset for inserted files)
+                rootItems.remove(at: folderIndex + folder.contents.count)
+            }
+
+            // Remove folder from dictionary
+            folders.removeValue(forKey: id)
+
+            // Rebuild list
+            buildEditableList()
+        }
+    }
+
+    func saveFolderName(id: UUID, newName: String) {
+        guard var folder = folders[id], !newName.isEmpty else { return }
+
+        withAnimation {
+            // Update folder name
+            folder.name = newName
+            folders[id] = folder
+
+            // Update in rootItems
+            if let index = rootItems.firstIndex(where: {
+                if case .folder(let f) = $0, f.id == id { return true }
+                return false
+            }) {
+                rootItems[index] = .folder(folder)
+            }
+
+            // Rebuild list
+            buildEditableList()
+        }
     }
 }
 
@@ -598,7 +665,14 @@ struct FileRowView: View {
 struct FolderRowView: View {
     let folder: FolderNode
     let accentColor: Color
+    var isRenaming: Bool = false
+    var renameFocused: FocusState<Bool>.Binding? = nil
     let onTap: () -> Void
+    var onRename: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
+    var onRenameSave: ((String) -> Void)? = nil
+
+    @State private var editedName: String = ""
 
     var body: some View {
         HStack(spacing: 12) {
@@ -607,8 +681,25 @@ struct FolderRowView: View {
                 .foregroundColor(accentColor)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(folder.name)
+                if isRenaming, let renameFocused = renameFocused, let onRenameSave = onRenameSave {
+                    TextField("Folder name", text: $editedName, onCommit: {
+                        onRenameSave(editedName)
+                    })
                     .font(.body)
+                    .focused(renameFocused)
+                    .onAppear {
+                        editedName = folder.name
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            renameFocused.wrappedValue = true
+                        }
+                    }
+                    .onSubmit {
+                        onRenameSave(editedName)
+                    }
+                } else {
+                    Text(folder.name)
+                        .font(.body)
+                }
                 Text("\(folder.itemCount) items")
                     .font(.caption2)
                     .foregroundColor(.secondary)
@@ -616,14 +707,46 @@ struct FolderRowView: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
-                .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
+            if !isRenaming {
+                // Show menu button if rename/delete actions are provided
+                if onRename != nil || onDelete != nil {
+                    Menu {
+                        if let onRename = onRename {
+                            Button {
+                                onRename()
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                        }
+                        if let onDelete = onDelete {
+                            Button(role: .destructive) {
+                                onDelete()
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
+            }
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .onTapGesture {
+            if !isRenaming {
+                onTap()
+            }
+        }
     }
 }
 
