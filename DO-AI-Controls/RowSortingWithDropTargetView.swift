@@ -24,13 +24,13 @@ struct FolderNode: Identifiable, Equatable {
 }
 
 enum DisplayNode: Identifiable, Equatable {
-    case file(FileNode)
+    case file(FileNode, isNested: Bool = false)
     case folder(FolderNode)
     case dropZone(UUID)
 
     var id: UUID {
         switch self {
-        case .file(let item):
+        case .file(let item, _):
             return item.id
         case .folder(let item):
             return item.id
@@ -56,8 +56,8 @@ struct RowSortingWithDropTargetView: View {
             List {
                 ForEach(displayedItems) { item in
                     switch item {
-                    case .file(let file):
-                        FileRowView(file: file, accentColor: accentColor)
+                    case .file(let file, let isNested):
+                        FileRowView(file: file, accentColor: accentColor, isNested: isNested)
                     case .folder(let folder):
                         FolderRowView(
                             folder: folder,
@@ -70,16 +70,20 @@ struct RowSortingWithDropTargetView: View {
                 }
             }
             .listStyle(.plain)
-            .navigationTitle("Folder Sorting")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
+                    Button("Edit") { isEditModalPresented = true }
                         .foregroundColor(accentColor)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Edit") { isEditModalPresented = true }
-                        .foregroundColor(accentColor)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .foregroundColor(accentColor)
+                            .fontWeight(.semibold)
+                    }
                 }
             }
         }
@@ -146,7 +150,7 @@ struct RowSortingWithDropTargetView: View {
             if case .folder(let folder) = item {
                 // Show contents if expanded
                 if folder.isExpanded {
-                    result.append(contentsOf: folder.contents.map { .file($0) })
+                    result.append(contentsOf: folder.contents.map { .file($0, isNested: true) })
                 }
 
                 // Add drop zone in edit mode
@@ -216,10 +220,11 @@ struct EditModalView: View {
             List {
                 ForEach(editableItems) { item in
                     switch item {
-                    case .file(let file):
+                    case .file(let file, let isNested):
                         FileRowView(
                             file: file,
                             accentColor: accentColor,
+                            isNested: isNested,
                             isMultiSelectMode: isMultiSelectMode,
                             isSelected: selectedItems.contains(file.id),
                             onSelect: {
@@ -253,10 +258,13 @@ struct EditModalView: View {
                             }
                         )
                     case .dropZone(let folderId):
-                        DropZoneRowView(
-                            folderName: folders[folderId]?.name ?? "Unknown",
-                            accentColor: accentColor
-                        )
+                        // Hide drop zones in multi-select mode
+                        if !isMultiSelectMode {
+                            DropZoneRowView(
+                                folderName: folders[folderId]?.name ?? "Unknown",
+                                accentColor: accentColor
+                            )
+                        }
                     }
                 }
                 .onMove(perform: isMultiSelectMode ? nil : moveItem)
@@ -267,14 +275,13 @@ struct EditModalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 16) {
-                        Button {
-                            addNewFolder()
-                        } label: {
-                            Image(systemName: "folder.badge.plus")
-                                .foregroundColor(accentColor)
+                    if isMultiSelectMode {
+                        Button("Cancel") {
+                            isMultiSelectMode = false
+                            selectedItems.removeAll()
                         }
-
+                        .foregroundColor(accentColor)
+                    } else {
                         Button {
                             isMultiSelectMode.toggle()
                             if !isMultiSelectMode {
@@ -284,65 +291,83 @@ struct EditModalView: View {
                             Image(systemName: isMultiSelectMode ? "checkmark.circle.fill" : "checkmark.circle")
                                 .foregroundColor(accentColor)
                         }
-
-                        Button {
-                            performUndo()
-                        } label: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .foregroundColor(undoStack.isEmpty ? .gray : accentColor)
-                        }
-                        .disabled(undoStack.isEmpty)
-
-                        Button {
-                            performRedo()
-                        } label: {
-                            Image(systemName: "arrow.uturn.forward")
-                                .foregroundColor(redoStack.isEmpty ? .gray : accentColor)
-                        }
-                        .disabled(redoStack.isEmpty)
                     }
                 }
+
+                ToolbarItem(placement: .principal) {
+                    EmptyView()
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        saveAndDismiss()
+                    if isMultiSelectMode {
+                        Button {
+                            isMultiSelectMode = false
+                            selectedItems.removeAll()
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(accentColor)
+                                .font(.title3)
+                        }
+                    } else {
+                        Button {
+                            saveAndDismiss()
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(accentColor)
+                                .fontWeight(.semibold)
+                        }
                     }
-                    .foregroundColor(accentColor)
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
+
                 if isMultiSelectMode {
-                    VStack(spacing: 0) {
-                        Divider()
-                        HStack {
-                            Text("\(selectedItems.count) selected")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                    ToolbarItem(placement: .bottomBar) {
+                        Menu {
+                            // "No Folder" option to move to root
+                            Button {
+                                moveSelectedItemsToRoot()
+                            } label: {
+                                Label("No Folder", systemImage: "doc")
+                            }
+
+                            // "New Folder" option to create folder and move items
+                            Button {
+                                moveSelectedItemsToNewFolder()
+                            } label: {
+                                Label("New Folder", systemImage: "folder.badge.plus")
+                            }
+
+                            Divider()
+
+                            ForEach(Array(folders.values.sorted(by: { $0.name > $1.name })), id: \.id) { folder in
+                                Button {
+                                    moveSelectedItemsToFolder(folderId: folder.id)
+                                } label: {
+                                    Label(folder.name, systemImage: "folder")
+                                }
+                            }
+                        } label: {
+                            Text(selectedItems.isEmpty ? "Move to..." : "Move \(selectedItems.count) to...")
+                                .foregroundColor(selectedItems.isEmpty ? .gray : accentColor)
+                        }
+                        .disabled(selectedItems.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .bottomBar) {
+                        HStack(spacing: 20) {
+                            Button {
+                                addNewFolder()
+                            } label: {
+                                Label("New Folder", systemImage: "folder.badge.plus")
+                            }
+
+                            Button {
+                                addNewRow()
+                            } label: {
+                                Label("New Row", systemImage: "plus")
+                            }
 
                             Spacer()
-
-                            Menu {
-                                ForEach(Array(folders.values.sorted(by: { $0.name < $1.name })), id: \.id) { folder in
-                                    Button {
-                                        moveSelectedItemsToFolder(folderId: folder.id)
-                                    } label: {
-                                        Label(folder.name, systemImage: "folder")
-                                    }
-                                }
-                            } label: {
-                                Text("Move to...")
-                                    .font(.body)
-                                    .foregroundColor(selectedItems.isEmpty ? .gray : accentColor)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(accentColor.opacity(0.1))
-                                    )
-                            }
-                            .disabled(selectedItems.isEmpty || folders.isEmpty)
                         }
-                        .padding()
-                        .background(Color(UIColor.systemBackground))
                     }
                 }
             }
@@ -380,7 +405,7 @@ struct EditModalView: View {
 
                 // Show contents if expanded
                 if folder.isExpanded {
-                    result.append(contentsOf: folder.contents.map { .file($0) })
+                    result.append(contentsOf: folder.contents.map { .file($0, isNested: true) })
                 }
 
                 // ALWAYS add drop zone after folder
@@ -455,7 +480,7 @@ struct EditModalView: View {
         }
 
         // Handle file moves
-        guard case .file(let file) = movedItem else { return }
+        guard case .file(let file, _) = movedItem else { return }
 
         // Check destination type - prioritize folder position over drop zone
         if let (folderId, position) = findFolderAtDestination(destination) {
@@ -624,7 +649,7 @@ struct EditModalView: View {
     func removeFileFromSource(_ file: FileNode) {
         // Try root first
         if let index = rootItems.firstIndex(where: {
-            if case .file(let f) = $0, f.id == file.id { return true }
+            if case .file(let f, _) = $0, f.id == file.id { return true }
             return false
         }) {
             rootItems.remove(at: index)
@@ -767,6 +792,56 @@ struct EditModalView: View {
         }
     }
 
+    func addNewRow() {
+        recordStateForUndo()
+
+        // Find the next row number by checking all existing files
+        var existingRowNumbers: [Int] = []
+
+        // Check root-level files
+        for item in rootItems {
+            if case .file(let file, _) = item {
+                if let number = extractRowNumber(from: file.name) {
+                    existingRowNumbers.append(number)
+                }
+            }
+        }
+
+        // Check files in folders
+        for folder in folders.values {
+            for file in folder.contents {
+                if let number = extractRowNumber(from: file.name) {
+                    existingRowNumbers.append(number)
+                }
+            }
+        }
+
+        // Find next available number
+        var nextNumber = 1
+        while existingRowNumbers.contains(nextNumber) {
+            nextNumber += 1
+        }
+
+        // Create new file
+        let newFile = FileNode(name: "Row \(nextNumber)")
+
+        // Append to rootItems
+        rootItems.append(.file(newFile, isNested: false))
+
+        // Rebuild editable list
+        withAnimation {
+            buildEditableList()
+        }
+    }
+
+    private func extractRowNumber(from name: String) -> Int? {
+        if name.hasPrefix("Row ") {
+            let numberString = name.dropFirst(4)
+            return Int(numberString)
+        }
+        return nil
+    }
+
     func saveAndDismiss() {
         // Changes are already reflected in bindings
         dismiss()
@@ -862,6 +937,25 @@ struct EditModalView: View {
 
     // MARK: - Multi-Select Operations
 
+    /// Selects all file items (not folders)
+    func selectAllFiles() {
+        selectedItems.removeAll()
+
+        // Select all files at root
+        for item in rootItems {
+            if case .file(let file, _) = item {
+                selectedItems.insert(file.id)
+            }
+        }
+
+        // Select all files in all folders
+        for folder in folders.values {
+            for file in folder.contents {
+                selectedItems.insert(file.id)
+            }
+        }
+    }
+
     /// Moves all selected items to the specified folder
     /// - Parameter folderId: The UUID of the destination folder
     func moveSelectedItemsToFolder(folderId: UUID) {
@@ -874,9 +968,9 @@ struct EditModalView: View {
             for itemId in selectedItems {
                 // Find and move files from root
                 if let fileIndex = rootItems.firstIndex(where: {
-                    if case .file(let f) = $0, f.id == itemId { return true }
+                    if case .file(let f, _) = $0, f.id == itemId { return true }
                     return false
-                }), case .file(let file) = rootItems[fileIndex] {
+                }), case .file(let file, _) = rootItems[fileIndex] {
                     moveFileIntoFolder(file: file, folderId: folderId, position: nil)
                 }
 
@@ -889,8 +983,91 @@ struct EditModalView: View {
                 }
             }
 
+            // Expand destination folder if it's collapsed (get fresh copy after moves)
+            if var folder = folders[folderId], !folder.isExpanded {
+                folder.isExpanded = true
+                updateFolder(folder)
+            }
+
             selectedItems.removeAll()
-            isMultiSelectMode = false
+            buildEditableList()
+        }
+    }
+
+    /// Moves all selected items to the root level (outside any folder)
+    func moveSelectedItemsToRoot() {
+        guard !selectedItems.isEmpty else { return }
+
+        recordStateForUndo()
+
+        withAnimation {
+            // Collect all files to move (need to collect first to avoid modification during iteration)
+            var filesToMove: [FileNode] = []
+
+            // Check in folders
+            for (_, folder) in folders {
+                for file in folder.contents where selectedItems.contains(file.id) {
+                    filesToMove.append(file)
+                }
+            }
+
+            // Move each file to root
+            for file in filesToMove {
+                removeFileFromSource(file)
+                rootItems.append(.file(file, isNested: false))
+            }
+
+            selectedItems.removeAll()
+            buildEditableList()
+        }
+    }
+
+    /// Creates a new folder and moves all selected items into it
+    func moveSelectedItemsToNewFolder() {
+        guard !selectedItems.isEmpty else { return }
+
+        recordStateForUndo()
+
+        withAnimation {
+            // Find the next folder letter (C, D, E, etc.)
+            let existingFolderNames = folders.values.map { $0.name }
+            var folderLetter = "C"
+            var letterCode = Character("C").asciiValue!
+
+            while existingFolderNames.contains("Folder \(folderLetter)") {
+                letterCode += 1
+                folderLetter = String(UnicodeScalar(letterCode))
+            }
+
+            // Create new folder (expanded by default)
+            var newFolder = FolderNode(name: "Folder \(folderLetter)", contents: [], isExpanded: true)
+
+            // Add to folders dictionary
+            folders[newFolder.id] = newFolder
+
+            // Append to rootItems
+            rootItems.append(.folder(newFolder))
+
+            // Move all selected items to the new folder
+            for itemId in selectedItems {
+                // Find and move files from root
+                if let fileIndex = rootItems.firstIndex(where: {
+                    if case .file(let f, _) = $0, f.id == itemId { return true }
+                    return false
+                }), case .file(let file, _) = rootItems[fileIndex] {
+                    moveFileIntoFolder(file: file, folderId: newFolder.id, position: nil)
+                }
+
+                // Also check in other folders
+                for (_, folder) in folders {
+                    if let fileInFolder = folder.contents.first(where: { $0.id == itemId }) {
+                        moveFileIntoFolder(file: fileInFolder, folderId: newFolder.id, position: nil)
+                        break
+                    }
+                }
+            }
+
+            selectedItems.removeAll()
             buildEditableList()
         }
     }
@@ -912,7 +1089,7 @@ struct EditModalView: View {
 
                 // Delete files
                 if let fileIndex = rootItems.firstIndex(where: {
-                    if case .file(let f) = $0, f.id == itemId { return true }
+                    if case .file(let f, _) = $0, f.id == itemId { return true }
                     return false
                 }) {
                     rootItems.remove(at: fileIndex)
@@ -971,6 +1148,7 @@ struct EditModalView: View {
 struct FileRowView: View {
     let file: FileNode
     let accentColor: Color
+    var isNested: Bool = false
     var isMultiSelectMode: Bool = false
     var isSelected: Bool = false
     var onSelect: (() -> Void)? = nil
@@ -985,10 +1163,10 @@ struct FileRowView: View {
 
             Circle()
                 .fill(gradientForFile(file.name))
-                .frame(width: 32, height: 32)
+                .frame(width: 28, height: 28)
                 .overlay(
                     Text(String(file.name.prefix(1)))
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.white)
                 )
                 .accessibilityHidden(true)
@@ -998,7 +1176,8 @@ struct FileRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+        .padding(.leading, isNested ? 32 : 0)
         .contentShape(Rectangle())
         .onTapGesture {
             if isMultiSelectMode, let onSelect = onSelect {
@@ -1055,10 +1234,10 @@ struct FolderRowView: View {
             }
 
             Image(systemName: "folder.fill")
-                .font(.body)
+                .font(.callout)
                 .foregroundColor(accentColor)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 if isRenaming, let renameFocused = renameFocused, let onRenameSave = onRenameSave {
                     TextField("Folder name", text: $editedName, onCommit: {
                         onRenameSave(editedName)
@@ -1118,7 +1297,7 @@ struct FolderRowView: View {
                     .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
         .contentShape(Rectangle())
         .onTapGesture {
             if !isRenaming {
