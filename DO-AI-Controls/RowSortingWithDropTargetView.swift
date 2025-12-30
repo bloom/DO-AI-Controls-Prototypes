@@ -161,16 +161,29 @@ struct RowSortingWithDropTargetView: View {
 
     func toggleFolder(id: UUID) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            if let index = rootItems.firstIndex(where: {
-                if case .folder(let f) = $0, f.id == id { return true }
-                return false
-            }) {
-                if case .folder(var folder) = rootItems[index] {
-                    folder.isExpanded.toggle()
-                    folders[folder.id] = folder
-                    rootItems[index] = .folder(folder)
-                }
+            if let index = findFolderIndex(id: id),
+               case .folder(var folder) = rootItems[index] {
+                folder.isExpanded.toggle()
+                updateFolder(folder)
             }
+        }
+    }
+
+    // MARK: - Helper Functions
+
+    func findFolderIndex(id: UUID) -> Int? {
+        rootItems.firstIndex { item in
+            if case .folder(let f) = item, f.id == id {
+                return true
+            }
+            return false
+        }
+    }
+
+    func updateFolder(_ folder: FolderNode) {
+        folders[folder.id] = folder
+        if let index = findFolderIndex(id: folder.id) {
+            rootItems[index] = .folder(folder)
         }
     }
 }
@@ -186,6 +199,9 @@ struct EditModalView: View {
     @State private var editableItems: [DisplayNode] = []
     @State private var renamingFolderId: UUID?
     @FocusState private var renameFocused: Bool
+
+    // Display list cache for performance
+    @State private var displayListCache: (stateHash: Int, result: [DisplayNode])? = nil
 
     var body: some View {
         NavigationStack {
@@ -250,7 +266,19 @@ struct EditModalView: View {
 
     // MARK: - Helper Functions
 
+    /// Builds the editable list with caching for performance
+    /// Only rebuilds if the underlying state (rootItems or folders) has changed
     func buildEditableList() {
+        // Calculate hash of current state
+        let currentHash = calculateStateHash()
+
+        // Check cache
+        if let cache = displayListCache, cache.stateHash == currentHash {
+            editableItems = cache.result
+            return
+        }
+
+        // Build new list
         var result: [DisplayNode] = []
 
         for item in rootItems {
@@ -270,9 +298,46 @@ struct EditModalView: View {
             }
         }
 
+        // Update cache and items
+        displayListCache = (currentHash, result)
         editableItems = result
     }
 
+    /// Calculates a hash representing the current state of rootItems and folders
+    /// Used for cache invalidation
+    private func calculateStateHash() -> Int {
+        var hasher = Hasher()
+
+        // Hash root items count and IDs
+        hasher.combine(rootItems.count)
+        for item in rootItems {
+            hasher.combine(item.id)
+        }
+
+        // Hash folder states (expanded, contents count)
+        for (id, folder) in folders {
+            hasher.combine(id)
+            hasher.combine(folder.isExpanded)
+            hasher.combine(folder.contents.count)
+            hasher.combine(folder.name)
+        }
+
+        return hasher.finalize()
+    }
+
+    /// Handles drag-and-drop operations for items in the list
+    ///
+    /// This function orchestrates all move operations with the following priority:
+    /// 1. Drop zones snap back to their correct position (not movable)
+    /// 2. Folders can only be moved at root level
+    /// 3. Files check destination in order:
+    ///    - Within expanded folder contents (specific position)
+    ///    - On drop zone (add to folder or move to root if from same folder)
+    ///    - Root level (between other root items)
+    ///
+    /// - Parameters:
+    ///   - source: IndexSet of the source item(s) being moved
+    ///   - destination: Target index in the display list
     func moveItem(from source: IndexSet, to destination: Int) {
         guard let sourceIndex = source.first else { return }
         let movedItem = editableItems[sourceIndex]
@@ -322,6 +387,35 @@ struct EditModalView: View {
         buildEditableList()
     }
 
+    /// Determines if a destination index falls within an expanded folder's contents
+    ///
+    /// This function maps display indices (which include expanded contents and drop zones)
+    /// to folder positions. It walks through rootItems calculating display indices and
+    /// checking if the destination falls within any expanded folder's range.
+    ///
+    /// **Display Index Calculation:**
+    /// - Collapsed folder: 1 (folder) + 1 (drop zone) = 2 indices
+    /// - Expanded folder: 1 (folder) + N (contents) + 1 (drop zone) = N+2 indices
+    /// - File at root: 1 index
+    ///
+    /// **Example:**
+    /// ```
+    /// rootItems: [File1, FolderA, File2]
+    /// FolderA (expanded): [A.1, A.2, A.3]
+    ///
+    /// Display indices:
+    /// 0: File1
+    /// 1: FolderA
+    /// 2: A.1  ← folderStartIndex
+    /// 3: A.2
+    /// 4: A.3
+    /// 5: ← folderInsertEndIndex (allows inserting after last item)
+    /// 6: DropZone
+    /// 7: File2
+    /// ```
+    ///
+    /// - Parameter destinationIndex: The target index in editableItems
+    /// - Returns: Tuple of (folderId, positionWithinFolder) if destination is in a folder, nil otherwise
     func findFolderAtDestination(_ destinationIndex: Int) -> (UUID, Int)? {
         // Walk through rootItems to find if destinationIndex falls within an expanded folder
         var currentDisplayIndex = 0
@@ -364,6 +458,22 @@ struct EditModalView: View {
         return nil
     }
 
+    /// Finds the parent folder of an item at a given display index
+    ///
+    /// This function determines if an item in editableItems is within a folder's contents.
+    /// Unlike `findFolderAtDestination`, this checks existing item positions only (not insertion points).
+    ///
+    /// **Key Difference from findFolderAtDestination:**
+    /// - `findFolderAtDestination`: Includes insertion point after last item (for dropping)
+    /// - `findParentFolder`: Only existing item positions (for identifying source)
+    ///
+    /// **Use Cases:**
+    /// - Determining where a dragged item came from
+    /// - Checking if item is already in a folder before moving
+    /// - Preventing items from moving back into their source folder
+    ///
+    /// - Parameter displayIndex: The index in editableItems to check
+    /// - Returns: Tuple of (folder, positionWithinFolder) if the item is in a folder, nil if at root level
     func findParentFolder(at displayIndex: Int) -> (FolderNode, Int)? {
         // Check if displayIndex is inside an expanded folder
         // Returns (folder, position within folder) if inside a folder, nil otherwise
@@ -409,21 +519,13 @@ struct EditModalView: View {
         removeFileFromSource(file)
 
         // Add to folder at specific position or end
-        guard var folder = folders[folderId] else { return }
+        guard var folder = getFolder(id: folderId) else { return }
         if let position = position {
             folder.contents.insert(file, at: min(position, folder.contents.count))
         } else {
             folder.contents.append(file)
         }
-        folders[folderId] = folder
-
-        // Update in rootItems
-        if let index = rootItems.firstIndex(where: {
-            if case .folder(let f) = $0, f.id == folderId { return true }
-            return false
-        }) {
-            rootItems[index] = .folder(folder)
-        }
+        updateFolder(folder)
     }
 
     func removeFileFromSource(_ file: FileNode) {
@@ -440,15 +542,7 @@ struct EditModalView: View {
         for (folderId, var folder) in folders {
             if let index = folder.contents.firstIndex(where: { $0.id == file.id }) {
                 folder.contents.remove(at: index)
-                folders[folderId] = folder
-
-                // Update in rootItems
-                if let rootIndex = rootItems.firstIndex(where: {
-                    if case .folder(let f) = $0, f.id == folderId { return true }
-                    return false
-                }) {
-                    rootItems[rootIndex] = .folder(folder)
-                }
+                updateFolder(folder)
                 return
             }
         }
@@ -482,10 +576,7 @@ struct EditModalView: View {
         }
 
         // Remove folder from current position in rootItems
-        if let currentIndex = rootItems.firstIndex(where: {
-            if case .folder(let f) = $0, f.id == folder.id { return true }
-            return false
-        }) {
+        if let currentIndex = findFolderIndex(id: folder.id) {
             rootItems.remove(at: currentIndex)
         }
 
@@ -493,6 +584,29 @@ struct EditModalView: View {
         rootItems.insert(.folder(folder), at: min(rootPosition, rootItems.count))
     }
 
+    /// Maps a display index (editableItems) to a root index (rootItems)
+    ///
+    /// This function converts indices from the display array (which includes expanded
+    /// folder contents and drop zones) back to indices in the rootItems array (which
+    /// only contains top-level files and folders).
+    ///
+    /// **Purpose:**
+    /// When moving items to root level, we need to know where to insert them in rootItems.
+    /// Since editableItems includes folder contents and drop zones, a display index of 10
+    /// might correspond to rootItems index 3.
+    ///
+    /// **Example:**
+    /// ```
+    /// rootItems:      [File1, FolderA, File2]  ← indices: 0, 1, 2
+    /// editableItems:  [File1, FolderA, A.1, A.2, DropZone, File2]
+    ///                   0      1        2    3    4         5
+    ///
+    /// mapDisplayToRootIndex(5) → 2 (File2's position in rootItems)
+    /// mapDisplayToRootIndex(3) → 1 (still inside FolderA's range, maps to folder position)
+    /// ```
+    ///
+    /// - Parameter displayIndex: Index in the editableItems array
+    /// - Returns: Corresponding index in the rootItems array
     func mapDisplayToRootIndex(_ displayIndex: Int) -> Int {
         var rootCount = 0
         var currentDisplayIndex = 0
@@ -518,16 +632,11 @@ struct EditModalView: View {
     }
 
     func toggleFolder(id: UUID) {
-        if let index = rootItems.firstIndex(where: {
-            if case .folder(let f) = $0, f.id == id { return true }
-            return false
-        }) {
-            if case .folder(var folder) = rootItems[index] {
-                folder.isExpanded.toggle()
-                folders[folder.id] = folder
-                rootItems[index] = .folder(folder)
-                buildEditableList()
-            }
+        if let index = findFolderIndex(id: id),
+           case .folder(var folder) = rootItems[index] {
+            folder.isExpanded.toggle()
+            updateFolder(folder)
+            buildEditableList()
         }
     }
 
@@ -569,15 +678,12 @@ struct EditModalView: View {
     }
 
     func deleteFolder(id: UUID) {
-        guard let folder = folders[id] else { return }
+        guard let folder = getFolder(id: id) else { return }
 
         withAnimation {
             // Move all folder contents to root level
             // Insert at the position where the folder currently is
-            if let folderIndex = rootItems.firstIndex(where: {
-                if case .folder(let f) = $0, f.id == id { return true }
-                return false
-            }) {
+            if let folderIndex = findFolderIndex(id: id) {
                 // Insert files at the folder's position (they'll appear where the folder was)
                 for (index, file) in folder.contents.enumerated() {
                     rootItems.insert(.file(file), at: folderIndex + index)
@@ -596,24 +702,46 @@ struct EditModalView: View {
     }
 
     func saveFolderName(id: UUID, newName: String) {
-        guard var folder = folders[id], !newName.isEmpty else { return }
+        guard var folder = getFolder(id: id), !newName.isEmpty else { return }
 
         withAnimation {
             // Update folder name
             folder.name = newName
-            folders[id] = folder
-
-            // Update in rootItems
-            if let index = rootItems.firstIndex(where: {
-                if case .folder(let f) = $0, f.id == id { return true }
-                return false
-            }) {
-                rootItems[index] = .folder(folder)
-            }
+            updateFolder(folder)
 
             // Rebuild list
             buildEditableList()
         }
+    }
+
+    // MARK: - Helper Functions (Extracted for Code Reuse)
+
+    /// Finds the index of a folder in rootItems by its ID
+    /// - Parameter id: The UUID of the folder to find
+    /// - Returns: The index if found, nil otherwise
+    func findFolderIndex(id: UUID) -> Int? {
+        rootItems.firstIndex { item in
+            if case .folder(let f) = item, f.id == id {
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Updates a folder in both the folders dictionary and rootItems array
+    /// - Parameter folder: The updated folder node to save
+    func updateFolder(_ folder: FolderNode) {
+        folders[folder.id] = folder
+        if let index = findFolderIndex(id: folder.id) {
+            rootItems[index] = .folder(folder)
+        }
+    }
+
+    /// Gets the current folder state from the folders dictionary
+    /// - Parameter id: The UUID of the folder
+    /// - Returns: The current folder node if it exists
+    func getFolder(id: UUID) -> FolderNode? {
+        folders[id]
     }
 }
 
@@ -633,6 +761,7 @@ struct FileRowView: View {
                         .font(.subheadline)
                         .foregroundColor(.white)
                 )
+                .accessibilityHidden(true)
 
             Text(file.name)
                 .font(.body)
@@ -640,6 +769,10 @@ struct FileRowView: View {
             Spacer()
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("File: \(file.name)")
+        .accessibilityHint("Double-tap to select, drag to move")
+        .accessibilityAddTraits(.isButton)
     }
 
     func gradientForFile(_ name: String) -> LinearGradient {
@@ -747,6 +880,21 @@ struct FolderRowView: View {
                 onTap()
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isRenaming ? "Editing folder name" : "\(folder.name), \(folder.itemCount) items")
+        .accessibilityHint(isRenaming ? "Type to rename folder" : "Double-tap to \(folder.isExpanded ? "collapse" : "expand")")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(folder.isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityAction(named: "Rename") {
+            if let onRename = onRename {
+                onRename()
+            }
+        }
+        .accessibilityAction(named: "Delete") {
+            if let onDelete = onDelete {
+                onDelete()
+            }
+        }
     }
 }
 
@@ -777,6 +925,10 @@ struct DropZoneRowView: View {
         .padding(.horizontal, 16)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Drop zone for \(folderName)")
+        .accessibilityHint("Drop items above this line to add them to \(folderName)")
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
