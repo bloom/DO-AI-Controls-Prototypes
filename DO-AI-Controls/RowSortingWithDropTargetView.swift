@@ -256,8 +256,15 @@ struct EditModalView: View {
         guard let sourceIndex = source.first else { return }
         let movedItem = editableItems[sourceIndex]
 
-        // Don't allow dragging drop zones
+        // Don't allow dragging drop zones - snap back after a short delay
         if case .dropZone = movedItem {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    // Force state update by clearing first
+                    self.editableItems = []
+                    self.buildEditableList()
+                }
+            }
             return
         }
 
