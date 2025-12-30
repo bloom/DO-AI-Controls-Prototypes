@@ -560,10 +560,10 @@ struct FileRowView: View {
         HStack(spacing: 12) {
             Circle()
                 .fill(gradientForFile(file.name))
-                .frame(width: 40, height: 40)
+                .frame(width: 32, height: 32)
                 .overlay(
                     Text(String(file.name.prefix(1)))
-                        .font(.headline)
+                        .font(.subheadline)
                         .foregroundColor(.white)
                 )
 
@@ -572,7 +572,7 @@ struct FileRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 
     func gradientForFile(_ name: String) -> LinearGradient {
@@ -603,25 +603,25 @@ struct FolderRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "folder.fill")
-                .font(.title3)
+                .font(.body)
                 .foregroundColor(accentColor)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(folder.name)
-                    .font(.headline)
+                    .font(.body)
                 Text("\(folder.itemCount) items")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.secondary)
                 .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
     }
@@ -632,22 +632,26 @@ struct DropZoneRowView: View {
     let accentColor: Color
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 0) {
+            Text("Drop above here to add to \(folderName)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 4)
+
             Rectangle()
-                .strokeBorder(
-                    accentColor.opacity(0.4),
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 4])
-                )
-                .frame(height: 50)
+                .fill(accentColor.opacity(0.4))
+                .frame(height: 1)
                 .overlay(
-                    Text("Drop here to add to \(folderName)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Rectangle()
+                        .stroke(
+                            accentColor.opacity(0.4),
+                            style: StrokeStyle(lineWidth: 1, dash: [6, 3])
+                        )
                 )
-                .padding(.horizontal, 8)
         }
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .frame(height: 25)
+        .padding(.horizontal, 16)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
     }
