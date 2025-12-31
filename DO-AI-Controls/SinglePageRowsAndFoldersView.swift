@@ -147,9 +147,13 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func updateFolder(_ folder: FolderNode) {
+        print("updateFolder called: \(folder.name), contents: \(folder.contents.map { $0.name })")
         folders[folder.id] = folder
         if let index = findFolderIndex(id: folder.id) {
             rootItems[index] = .folder(folder)
+            print("Updated rootItems[\(index)] with folder: \(folder.name)")
+        } else {
+            print("WARNING: Could not find folder \(folder.name) in rootItems")
         }
     }
 
@@ -199,64 +203,190 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func removeFileFromSource(_ file: FileNode) {
+        print("removeFileFromSource called for: \(file.name)")
         // Try root first
         if let index = rootItems.firstIndex(where: {
             if case .file(let f, _) = $0, f.id == file.id { return true }
             return false
         }) {
             rootItems.remove(at: index)
+            print("Removed \(file.name) from rootItems at index \(index)")
             return
         }
 
         // Try folders
-        for (_, var folder) in folders {
+        for (folderId, var folder) in folders {
             if let index = folder.contents.firstIndex(where: { $0.id == file.id }) {
                 folder.contents.remove(at: index)
+                print("Removed \(file.name) from folder \(folder.name) at index \(index)")
                 updateFolder(folder)
                 return
             }
         }
+
+        print("WARNING: Could not find \(file.name) to remove")
     }
 
     func moveItem(from source: IndexSet, to destination: Int) {
         guard let sourceIndex = source.first else { return }
         let movedItem = displayedItems[sourceIndex]
 
-        // Don't allow moving drop zones
+        print("\n=== MOVE ITEM START ===")
+        print("Source index: \(sourceIndex), Destination: \(destination)")
+
+        // Don't allow moving folders or drop zones
         if case .dropZone = movedItem {
             return
         }
-
-        // Determine context of source and destination
-        let sourceContext = getItemContext(at: sourceIndex)
-        let destinationContext = getItemContext(at: destination)
-
-        // Only allow moves within the same context (both at root or both in same folder)
-        guard sourceContext == destinationContext else { return }
-
-        if sourceContext == .root {
-            // Moving at root level
-            rootItems.move(fromOffsets: source, toOffset: destination)
-        } else if case .inFolder(let folderId) = sourceContext,
-                  var folder = folders[folderId] {
-            // Moving within a folder
-            // Calculate the actual indices within the folder's contents array
-            let folderStartIndex = displayedItems.firstIndex { item in
-                if case .folder(let f) = item, f.id == folderId { return true }
-                return false
-            }
-
-            if let folderStart = folderStartIndex {
-                let sourceInFolder = sourceIndex - folderStart - 1
-                let destInFolder = destination - folderStart - 1
-
-                folder.contents.move(
-                    fromOffsets: IndexSet(integer: sourceInFolder),
-                    toOffset: destInFolder
-                )
-                updateFolder(folder)
-            }
+        if case .folder = movedItem {
+            return
         }
+
+        // Only handle file moves
+        guard case .file(let file, _) = movedItem else { return }
+        print("Moving file: \(file.name)")
+
+        withAnimation {
+            // Determine context of source and destination
+            let sourceContext = getItemContext(at: sourceIndex)
+            let destinationContext = getItemContext(at: destination)
+
+            // Case 1: Moving within the same context (same level)
+            if sourceContext == destinationContext {
+                if sourceContext == .root {
+                    // Moving at root level - simple reorder
+                    let rootIndex = mapDisplayIndexToRootIndex(sourceIndex)
+                    let destRootIndex = mapDisplayIndexToRootIndex(destination)
+
+                    print("Root-level move: displayIndex \(sourceIndex) -> \(destination), rootIndex \(rootIndex) -> \(destRootIndex)")
+                    print("Current rootItems count: \(rootItems.count)")
+
+                    guard rootIndex >= 0 && rootIndex < rootItems.count else {
+                        print("Invalid rootIndex: \(rootIndex)")
+                        return
+                    }
+
+                    guard destRootIndex >= 0 && destRootIndex <= rootItems.count else {
+                        print("Invalid destRootIndex: \(destRootIndex)")
+                        return
+                    }
+
+                    rootItems.move(
+                        fromOffsets: IndexSet(integer: rootIndex),
+                        toOffset: destRootIndex
+                    )
+                } else if case .inFolder(let folderId) = sourceContext,
+                          var folder = folders[folderId] {
+                    // Moving within same folder - reorder contents
+                    let folderStartIndex = displayedItems.firstIndex { item in
+                        if case .folder(let f) = item, f.id == folderId { return true }
+                        return false
+                    }
+
+                    if let folderStart = folderStartIndex {
+                        let sourceInFolder = sourceIndex - folderStart - 1
+                        let destInFolder = destination - folderStart - 1
+
+                        // Validate indices
+                        guard sourceInFolder >= 0 && sourceInFolder < folder.contents.count else {
+                            print("Invalid sourceInFolder: \(sourceInFolder), folder.contents.count: \(folder.contents.count)")
+                            return
+                        }
+
+                        guard destInFolder >= 0 && destInFolder <= folder.contents.count else {
+                            print("Invalid destInFolder: \(destInFolder), folder.contents.count: \(folder.contents.count)")
+                            return
+                        }
+
+                        folder.contents.move(
+                            fromOffsets: IndexSet(integer: sourceInFolder),
+                            toOffset: destInFolder
+                        )
+                        updateFolder(folder)
+                    }
+                }
+            }
+            // Case 2: Moving between different contexts (cross-level move)
+            else {
+                // Remove from source
+                removeFileFromSource(file)
+
+                // Add to destination
+                if case .inFolder(let destFolderId) = destinationContext,
+                   var destFolder = folders[destFolderId] {
+                    // Moving into a folder
+                    let folderStartIndex = displayedItems.firstIndex { item in
+                        if case .folder(let f) = item, f.id == destFolderId { return true }
+                        return false
+                    }
+
+                    if let folderStart = folderStartIndex {
+                        let positionInFolder = destination - folderStart - 1
+                        let insertPosition = max(0, min(positionInFolder, destFolder.contents.count))
+
+                        print("Cross-level move into folder: positionInFolder=\(positionInFolder), insertPosition=\(insertPosition), folder.contents.count=\(destFolder.contents.count)")
+
+                        destFolder.contents.insert(file, at: insertPosition)
+
+                        // Expand folder to show the moved file
+                        if !destFolder.isExpanded {
+                            destFolder.isExpanded = true
+                        }
+
+                        updateFolder(destFolder)
+                    }
+                } else {
+                    // Moving to root level
+                    let rootPosition = mapDisplayIndexToRootIndex(destination)
+                    let insertPosition = min(rootPosition, rootItems.count)
+
+                    print("Cross-level move to root: rootPosition=\(rootPosition), insertPosition=\(insertPosition), rootItems.count=\(rootItems.count)")
+
+                    rootItems.insert(.file(file, isNested: false), at: insertPosition)
+                }
+            }
+
+            print("=== MOVE ITEM END ===")
+            let rootItemsDescription = rootItems.map { item -> String in
+                switch item {
+                case .file(let f, _): return f.name
+                case .folder(let f): return "\(f.name)(\(f.contents.count))"
+                case .dropZone: return "dropZone"
+                }
+            }
+            print("Final rootItems: \(rootItemsDescription)")
+            print("Final folders contents:")
+            for (_, folder) in folders {
+                print("  \(folder.name): \(folder.contents.map { $0.name })")
+            }
+            print()
+        }
+    }
+
+    func mapDisplayIndexToRootIndex(_ displayIndex: Int) -> Int {
+        var rootCount = 0
+        var currentDisplayIndex = 0
+
+        for item in rootItems {
+            // If we've reached or passed the target display index, return current root count
+            if currentDisplayIndex >= displayIndex {
+                return rootCount
+            }
+
+            // Count this root item
+            currentDisplayIndex += 1
+
+            // If it's an expanded folder, skip its contents in the display
+            if case .folder(let folder) = item, folder.isExpanded {
+                currentDisplayIndex += folder.contents.count
+            }
+
+            // Increment root count only after processing this item
+            rootCount += 1
+        }
+
+        // If we've gone through all items, return the count (append at end)
+        return rootCount
     }
 
     enum ItemContext: Equatable {
@@ -272,8 +402,15 @@ struct SinglePageRowsAndFoldersView: View {
             if case .folder(let folder) = displayedItems[i] {
                 // Check if we're within this folder's expanded contents
                 if folder.isExpanded && i < index {
-                    return .inFolder(folder.id)
-                } else {
+                    // Check if index is within the folder's content range
+                    let folderEndIndex = i + folder.contents.count
+                    if index > i && index <= folderEndIndex {
+                        return .inFolder(folder.id)
+                    }
+                    // If we're past this folder's contents, continue searching backwards
+                }
+                // If folder is collapsed or we're at/before the folder, we're at root
+                if i == index {
                     return .root
                 }
             }
