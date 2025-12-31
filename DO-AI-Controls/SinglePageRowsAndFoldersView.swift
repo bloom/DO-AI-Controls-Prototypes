@@ -19,47 +19,86 @@ struct SinglePageRowsAndFoldersView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(displayedItems) { item in
-                    switch item {
-                    case .file(let file, let isNested):
-                        SinglePageFileRowView(
-                            file: file,
-                            isNested: isNested,
-                            isEditMode: isEditMode,
-                            folders: folders,
-                            accentColor: accentColor,
-                            onMoveToFolder: { folderId in
-                                moveFileToFolder(file: file, folderId: folderId)
-                            },
-                            onRemoveFromFolder: {
-                                removeFileFromFolder(file: file)
+            ZStack {
+                List {
+                    ForEach(displayedItems) { item in
+                        switch item {
+                        case .file(let file, let isNested):
+                            SinglePageFileRowView(
+                                file: file,
+                                isNested: isNested,
+                                isEditMode: isEditMode,
+                                orderedFolders: orderedFolders,
+                                accentColor: accentColor,
+                                onMoveToFolder: { folderId in
+                                    moveFileToFolder(file: file, folderId: folderId)
+                                },
+                                onRemoveFromFolder: {
+                                    removeFileFromFolder(file: file)
+                                }
+                            )
+                        case .folder(let folder):
+                            SinglePageFolderRowView(
+                                folder: folder,
+                                isEditMode: isEditMode,
+                                accentColor: accentColor,
+                                onTap: { toggleFolder(id: folder.id) }
+                            )
+                        case .dropZone:
+                            EmptyView()
+                        }
+                    }
+                    .onMove(perform: isEditMode ? moveItem : nil)
+                }
+                .listStyle(.plain)
+                .environment(\.editMode, isEditMode ? .constant(.active) : .constant(.inactive))
+
+                // FAB for New Journal
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            addNewFile()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("New Journal")
+                                    .font(.system(size: 16, weight: .semibold))
                             }
-                        )
-                    case .folder(let folder):
-                        SinglePageFolderRowView(
-                            folder: folder,
-                            isEditMode: isEditMode,
-                            accentColor: accentColor,
-                            onTap: { toggleFolder(id: folder.id) }
-                        )
-                    case .dropZone:
-                        EmptyView()
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                            .background(
+                                Capsule()
+                                    .fill(Color(white: 0.2))
+                            )
+                            .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                     }
                 }
-                .onMove(perform: isEditMode ? moveItem : nil)
             }
-            .listStyle(.plain)
-            .environment(\.editMode, isEditMode ? .constant(.active) : .constant(.inactive))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(isEditMode ? "Done" : "Edit") {
-                        withAnimation {
-                            isEditMode.toggle()
+                    HStack(spacing: 12) {
+                        Button {
+                            addNewFolder()
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundColor(accentColor)
                         }
+
+                        Button(isEditMode ? "Done" : "Edit") {
+                            withAnimation {
+                                isEditMode.toggle()
+                            }
+                        }
+                        .foregroundColor(accentColor)
                     }
-                    .foregroundColor(accentColor)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -91,6 +130,16 @@ struct SinglePageRowsAndFoldersView: View {
             }
         }
         return result
+    }
+
+    var orderedFolders: [FolderNode] {
+        // Extract folders in the order they appear in rootItems
+        rootItems.compactMap { item in
+            if case .folder(let folder) = item {
+                return folder
+            }
+            return nil
+        }
     }
 
     // MARK: - Helper Functions
@@ -135,6 +184,74 @@ struct SinglePageRowsAndFoldersView: View {
                 updateFolder(folder)
             }
         }
+    }
+
+    func addNewFolder() {
+        withAnimation {
+            // Find the next folder letter (C, D, E, etc.)
+            let existingFolderNames = folders.values.map { $0.name }
+            var folderLetter = "C"
+            var letterCode = Character("C").asciiValue!
+
+            while existingFolderNames.contains("Folder \(folderLetter)") {
+                letterCode += 1
+                folderLetter = String(UnicodeScalar(letterCode))
+            }
+
+            // Create new folder
+            let newFolder = FolderNode(name: "Folder \(folderLetter)", contents: [], isExpanded: false)
+
+            // Add to folders dictionary
+            folders[newFolder.id] = newFolder
+
+            // Append to rootItems
+            rootItems.append(.folder(newFolder))
+        }
+    }
+
+    func addNewFile() {
+        withAnimation {
+            // Find the next row number by checking all existing files
+            var existingRowNumbers: [Int] = []
+
+            // Check root-level files
+            for item in rootItems {
+                if case .file(let file, _) = item {
+                    if let number = extractRowNumber(from: file.name) {
+                        existingRowNumbers.append(number)
+                    }
+                }
+            }
+
+            // Check files in folders
+            for folder in folders.values {
+                for file in folder.contents {
+                    if let number = extractRowNumber(from: file.name) {
+                        existingRowNumbers.append(number)
+                    }
+                }
+            }
+
+            // Find next available number
+            var nextNumber = 1
+            while existingRowNumbers.contains(nextNumber) {
+                nextNumber += 1
+            }
+
+            // Create new file
+            let newFile = FileNode(name: "Row \(nextNumber)")
+
+            // Append to rootItems
+            rootItems.append(.file(newFile, isNested: false))
+        }
+    }
+
+    private func extractRowNumber(from name: String) -> Int? {
+        if name.hasPrefix("Row ") {
+            let numberString = name.dropFirst(4)
+            return Int(numberString)
+        }
+        return nil
     }
 
     func findFolderIndex(id: UUID) -> Int? {
@@ -215,7 +332,7 @@ struct SinglePageRowsAndFoldersView: View {
         }
 
         // Try folders
-        for (folderId, var folder) in folders {
+        for (_, var folder) in folders {
             if let index = folder.contents.firstIndex(where: { $0.id == file.id }) {
                 folder.contents.remove(at: index)
                 print("Removed \(file.name) from folder \(folder.name) at index \(index)")
@@ -234,19 +351,44 @@ struct SinglePageRowsAndFoldersView: View {
         print("\n=== MOVE ITEM START ===")
         print("Source index: \(sourceIndex), Destination: \(destination)")
 
-        // Don't allow moving folders or drop zones
+        // Don't allow moving drop zones
         if case .dropZone = movedItem {
             return
         }
-        if case .folder = movedItem {
-            return
-        }
-
-        // Only handle file moves
-        guard case .file(let file, _) = movedItem else { return }
-        print("Moving file: \(file.name)")
 
         withAnimation {
+            // Handle folder moves (only at root level)
+            if case .folder(let folder) = movedItem {
+                print("Moving folder: \(folder.name)")
+
+                // Folders can only be moved at root level
+                let rootIndex = mapDisplayIndexToRootIndex(sourceIndex)
+                let destRootIndex = mapDisplayIndexToRootIndex(destination)
+
+                print("Folder move: displayIndex \(sourceIndex) -> \(destination), rootIndex \(rootIndex) -> \(destRootIndex)")
+
+                guard rootIndex >= 0 && rootIndex < rootItems.count else {
+                    print("Invalid rootIndex: \(rootIndex)")
+                    return
+                }
+
+                guard destRootIndex >= 0 && destRootIndex <= rootItems.count else {
+                    print("Invalid destRootIndex: \(destRootIndex)")
+                    return
+                }
+
+                rootItems.move(
+                    fromOffsets: IndexSet(integer: rootIndex),
+                    toOffset: destRootIndex
+                )
+
+                print("Folder moved successfully")
+                return
+            }
+
+            // Handle file moves
+            guard case .file(let file, _) = movedItem else { return }
+            print("Moving file: \(file.name)")
             // Determine context of source and destination
             let sourceContext = getItemContext(at: sourceIndex)
             let destinationContext = getItemContext(at: destination)
@@ -426,7 +568,7 @@ struct SinglePageFileRowView: View {
     let file: FileNode
     let isNested: Bool
     let isEditMode: Bool
-    let folders: [UUID: FolderNode]
+    let orderedFolders: [FolderNode]
     let accentColor: Color
     let onMoveToFolder: (UUID) -> Void
     let onRemoveFromFolder: () -> Void
@@ -463,7 +605,7 @@ struct SinglePageFileRowView: View {
                 } else {
                     // At root - show add to folder menu
                     Menu {
-                        ForEach(Array(folders.values.sorted(by: { $0.name < $1.name })), id: \.id) { folder in
+                        ForEach(orderedFolders, id: \.id) { folder in
                             Button {
                                 onMoveToFolder(folder.id)
                             } label: {

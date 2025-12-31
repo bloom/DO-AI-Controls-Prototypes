@@ -107,6 +107,16 @@ struct RowSortingWithDropTargetView: View {
         buildDisplayList(includeDropZones: false)
     }
 
+    var orderedFolders: [FolderNode] {
+        // Extract folders in the order they appear in rootItems
+        rootItems.compactMap { item in
+            if case .folder(let folder) = item {
+                return folder
+            }
+            return nil
+        }
+    }
+
     // MARK: - Helper Functions
 
     func initializeDefaultData() {
@@ -338,7 +348,7 @@ struct EditModalView: View {
 
                             Divider()
 
-                            ForEach(Array(folders.values.sorted(by: { $0.name > $1.name })), id: \.id) { folder in
+                            ForEach(orderedFolders, id: \.id) { folder in
                                 Button {
                                     moveSelectedItemsToFolder(folderId: folder.id)
                                 } label: {
@@ -380,6 +390,16 @@ struct EditModalView: View {
     }
 
     // MARK: - Helper Functions
+
+    var orderedFolders: [FolderNode] {
+        // Extract folders in the order they appear in rootItems
+        rootItems.compactMap { item in
+            if case .folder(let folder) = item {
+                return folder
+            }
+            return nil
+        }
+    }
 
     /// Builds the editable list with caching for performance
     /// Only rebuilds if the underlying state (rootItems or folders) has changed
