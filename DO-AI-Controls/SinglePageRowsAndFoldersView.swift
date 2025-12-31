@@ -391,7 +391,28 @@ struct SinglePageRowsAndFoldersView: View {
             print("Moving file: \(file.name)")
             // Determine context of source and destination
             let sourceContext = getItemContext(at: sourceIndex)
-            let destinationContext = getItemContext(at: destination)
+            var destinationContext = getItemContext(at: destination)
+
+            // Edge case: When dragging to position after last item in folder,
+            // destination might point to next item outside folder
+            // Check if destination is immediately after source folder's contents
+            if case .inFolder(let sourceFolderId) = sourceContext,
+               destinationContext != sourceContext {
+                // Find the source folder in displayed items
+                if let folderIndex = displayedItems.firstIndex(where: { item in
+                    if case .folder(let f) = item, f.id == sourceFolderId { return true }
+                    return false
+                }),
+                   case .folder(let sourceFolder) = displayedItems[folderIndex] {
+                    // Check if destination is right after this folder's contents
+                    let folderEndIndex = folderIndex + sourceFolder.contents.count
+                    if destination == folderEndIndex + 1 {
+                        // Treat this as moving to end of the same folder
+                        print("Edge case detected: destination is right after folder contents, treating as same-folder move")
+                        destinationContext = .inFolder(sourceFolderId)
+                    }
+                }
+            }
 
             // Case 1: Moving within the same context (same level)
             if sourceContext == destinationContext {
@@ -450,41 +471,54 @@ struct SinglePageRowsAndFoldersView: View {
             }
             // Case 2: Moving between different contexts (cross-level move)
             else {
-                // Remove from source
-                removeFileFromSource(file)
+                // IMPORTANT: Calculate destination positions BEFORE modifying state
+                // because removal changes folder item counts and affects index mapping
+                var calculatedInsertPosition: Int?
+                var calculatedFolderId: UUID?
 
-                // Add to destination
                 if case .inFolder(let destFolderId) = destinationContext,
-                   var destFolder = folders[destFolderId] {
-                    // Moving into a folder
-                    let folderStartIndex = displayedItems.firstIndex { item in
+                   let destFolder = folders[destFolderId] {
+                    // Calculate position in folder BEFORE any changes
+                    if let folderStartIndex = displayedItems.firstIndex(where: { item in
                         if case .folder(let f) = item, f.id == destFolderId { return true }
                         return false
-                    }
-
-                    if let folderStart = folderStartIndex {
-                        let positionInFolder = destination - folderStart - 1
-                        let insertPosition = max(0, min(positionInFolder, destFolder.contents.count))
-
-                        print("Cross-level move into folder: positionInFolder=\(positionInFolder), insertPosition=\(insertPosition), folder.contents.count=\(destFolder.contents.count)")
-
-                        destFolder.contents.insert(file, at: insertPosition)
-
-                        // Expand folder to show the moved file
-                        if !destFolder.isExpanded {
-                            destFolder.isExpanded = true
-                        }
-
-                        updateFolder(destFolder)
+                    }) {
+                        let positionInFolder = destination - folderStartIndex - 1
+                        calculatedInsertPosition = max(0, min(positionInFolder, destFolder.contents.count))
+                        calculatedFolderId = destFolderId
                     }
                 } else {
+                    // Calculate root position BEFORE any changes
+                    calculatedInsertPosition = mapDisplayIndexToRootIndex(destination)
+                }
+
+                // Now remove from source
+                removeFileFromSource(file)
+
+                // Add to destination using pre-calculated positions
+                if let folderId = calculatedFolderId,
+                   let insertPos = calculatedInsertPosition,
+                   var destFolder = folders[folderId] {
+                    // Moving into a folder
+                    let finalInsertPosition = min(insertPos, destFolder.contents.count)
+
+                    print("Cross-level move into folder: insertPosition=\(finalInsertPosition), folder.contents.count=\(destFolder.contents.count)")
+
+                    destFolder.contents.insert(file, at: finalInsertPosition)
+
+                    // Expand folder to show the moved file
+                    if !destFolder.isExpanded {
+                        destFolder.isExpanded = true
+                    }
+
+                    updateFolder(destFolder)
+                } else if let insertPos = calculatedInsertPosition {
                     // Moving to root level
-                    let rootPosition = mapDisplayIndexToRootIndex(destination)
-                    let insertPosition = min(rootPosition, rootItems.count)
+                    let finalInsertPosition = min(insertPos, rootItems.count)
 
-                    print("Cross-level move to root: rootPosition=\(rootPosition), insertPosition=\(insertPosition), rootItems.count=\(rootItems.count)")
+                    print("Cross-level move to root: insertPosition=\(finalInsertPosition), rootItems.count=\(rootItems.count)")
 
-                    rootItems.insert(.file(file, isNested: false), at: insertPosition)
+                    rootItems.insert(.file(file, isNested: false), at: finalInsertPosition)
                 }
             }
 
