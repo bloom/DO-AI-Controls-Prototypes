@@ -82,6 +82,11 @@ struct ContentView: View {
                             print("Row Sorting with Drop Target button tapped")
                             selectedFeature = .rowSortingWithDropTarget
                         }
+
+                        FeatureButton(title: "Single Page Rows and Folders", feature: .singlePageRowsAndFolders, color: accentColor) {
+                            print("Single Page Rows and Folders button tapped")
+                            selectedFeature = .singlePageRowsAndFolders
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 18)
@@ -118,6 +123,8 @@ struct ContentView: View {
                     RowSortingWithFoldersView()
                 case .rowSortingWithDropTarget:
                     RowSortingWithDropTargetView()
+                case .singlePageRowsAndFolders:
+                    SinglePageRowsAndFoldersView()
                 }
             }
         }
@@ -368,7 +375,7 @@ struct PhotoMetadata {
 }
 
 enum AIFeature: String, Identifiable {
-    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders, standardRowFeatures, rowSortingWithFolders, rowSortingWithDropTarget
+    case imageGeneration, imageGeneration2, entrySummary, transcribeAudio, photoDescription, captionsDescriptions, iOSNativeViews, presentationMethods, keyboardAccessories, sliders, standardRowFeatures, rowSortingWithFolders, rowSortingWithDropTarget, singlePageRowsAndFolders
 
     var id: String { rawValue }
 
@@ -387,6 +394,7 @@ enum AIFeature: String, Identifiable {
         case .standardRowFeatures: return "Standard Row Features"
         case .rowSortingWithFolders: return "Row Sorting with Folders"
         case .rowSortingWithDropTarget: return "Row Sorting with Drop Target"
+        case .singlePageRowsAndFolders: return "Single Page Rows and Folders"
         }
     }
 }
