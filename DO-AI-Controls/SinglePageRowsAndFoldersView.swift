@@ -28,6 +28,11 @@ struct SinglePageRowsAndFoldersView: View {
         static let autoDeleteEmptyFolders = false // Set to true to auto-delete empty folders
     }
 
+    // MARK: - Haptics
+    private let impactLight = UIImpactFeedbackGenerator(style: .light)
+    private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
+    private let selectionFeedback = UISelectionFeedbackGenerator()
+
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Dual State Management
@@ -88,6 +93,28 @@ struct SinglePageRowsAndFoldersView: View {
                 }
                 .listStyle(.plain)
                 .environment(\.editMode, isEditMode ? .constant(.active) : .constant(.inactive))
+
+                // Empty state
+                if rootItems.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 60))
+                            .foregroundColor(.secondary.opacity(0.5))
+
+                        Text("No Journals Yet")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+
+                        Text("Tap the + button below to create your first journal entry")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("No journals yet. Tap the New Journal button below to create your first entry")
+                }
 
                 // FAB for New Journal
                 VStack {
@@ -221,6 +248,7 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func toggleFolder(id: UUID) {
+        selectionFeedback.selectionChanged()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             if let index = findFolderIndex(id: id),
                case .folder(var folder) = rootItems[index] {
@@ -232,6 +260,7 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func addNewFolder() {
+        impactMedium.impactOccurred()
         withAnimation {
             // Find the next available folder name
             let newFolderName = generateNextFolderName()
@@ -285,6 +314,7 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func addNewFile() {
+        impactMedium.impactOccurred()
         withAnimation {
             // Find the next row number using Set for O(n) lookup
             let existingRowNumbers = getAllFileNumbers()
@@ -732,6 +762,9 @@ struct SinglePageRowsAndFoldersView: View {
                 return
             }
 
+            // Haptic feedback for successful move
+            impactLight.impactOccurred()
+
             #if DEBUG
             print("=== MOVE ITEM END ===")
             let rootItemsDescription = rootItems.map { item -> String in
@@ -839,7 +872,7 @@ struct SinglePageFileRowView: View {
     var body: some View {
         HStack(spacing: Layout.rowSpacing) {
             Circle()
-                .fill(gradientForFile(file.name))
+                .fill(Color.gradientForString(file.name))
                 .frame(width: Layout.iconSize, height: Layout.iconSize)
                 .overlay(
                     Text(String(file.name.prefix(1)))
@@ -895,25 +928,6 @@ struct SinglePageFileRowView: View {
         .accessibilityLabel(file.name)
         .accessibilityHint(isEditMode ? "Drag to reorder" : "")
         .accessibilityValue(isNested ? "In folder" : "At root level")
-    }
-
-    func gradientForFile(_ name: String) -> LinearGradient {
-        let colors: [Color] = [
-            Color(hex: "FF6B6B"), Color(hex: "4ECDC4"), Color(hex: "45B7D1"),
-            Color(hex: "FFA07A"), Color(hex: "98D8C8"), Color(hex: "F7DC6F"),
-            Color(hex: "BB8FCE"), Color(hex: "85C1E2"), Color(hex: "F8B88B"),
-            Color(hex: "52B788")
-        ]
-
-        let charValue = name.unicodeScalars.first?.value ?? 0
-        let colorIndex = Int(charValue) % colors.count
-        let color = colors[colorIndex]
-
-        return LinearGradient(
-            colors: [color, color.opacity(0.7)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 }
 

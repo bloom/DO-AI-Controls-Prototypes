@@ -86,26 +86,26 @@
 ## 🟢 Low Priority - Polish & Nice-to-Have
 
 ### Code Cleanup
-- [ ] **Extract magic numbers to constants**
-  - [ ] Create `Layout` enum with static properties
-  - [ ] Extract: `nestedIndentation = 32`, `rowVerticalPadding = 2`
-  - [ ] Extract: `fabTrailing = 20`, `fabBottom = 20`
-  - [ ] Extract: `iconSize = 28`, `spacing = 12`
+- [x] **Extract magic numbers to constants** ✅ (Completed in high-priority phase)
+  - [x] Create `Layout` enum with static properties
+  - [x] Extract: `nestedIndentation = 32`, `rowVerticalPadding = 2`
+  - [x] Extract: `fabTrailing = 20`, `fabBottom = 20`
+  - [x] Extract: `iconSize = 28`, `spacing = 12`
   - **Impact:** Easier to adjust layout, better maintainability
-  - **Lines:** 658, 710, 79-80, 614, 611
+  - **Lines:** 14-24 (Layout enum)
 
-- [ ] **Remove duplicate code**
-  - [ ] Extract `gradientForFile()` to shared Color extension
-  - [ ] Share with other views (RowCellView, etc.)
-  - [ ] Create single source of truth for color palette
+- [x] **Remove duplicate code**
+  - [x] Extract `gradientForFile()` to shared `Color.gradientForString()` extension
+  - [x] Updated SinglePageRowsAndFoldersView.swift and RowSortingWithDropTargetView.swift
+  - [x] Create single source of truth for color palette
   - **Impact:** DRY principle, consistent colors across app
-  - **Lines:** 661-678
+  - **Lines:** DO_AI_ControlsApp.swift:39-56
 
 - [ ] **Improve folder finding performance**
   - [ ] Cache folder index lookups in `findFolderIndex()`
   - [ ] Or use dictionary-based lookup instead of array search
-  - **Impact:** Faster folder operations
-  - **Lines:** 257-264
+  - **Impact:** Faster folder operations (minor - already fast with current dataset sizes)
+  - **Lines:** 357-365
 
 ### User Experience Enhancements
 - [ ] **Add undo/redo support**
@@ -115,29 +115,31 @@
   - [ ] Implement `undo()` and `redo()` functions
   - **Impact:** Better UX consistency, mistake recovery
   - **Reference:** RowSortingWithDropTargetView.swift lines 225-226
+  - **Note:** Significant implementation effort - recommended for future iteration
 
-- [ ] **Add haptic feedback**
-  - [ ] Import `CoreHaptics` or use `UIImpactFeedbackGenerator`
-  - [ ] Add feedback on folder expand/collapse
-  - [ ] Add feedback on successful drag-drop
-  - [ ] Add feedback on button taps in edit mode
+- [x] **Add haptic feedback**
+  - [x] Added UIImpactFeedbackGenerator instances (light, medium, selection)
+  - [x] Add feedback on folder expand/collapse (selectionFeedback)
+  - [x] Add feedback on successful drag-drop (impactLight)
+  - [x] Add feedback on button taps: New Folder, New Journal (impactMedium)
   - **Impact:** More tactile, polished feel
-  - **Lines:** Throughout interaction points
+  - **Lines:** 31-34 (generators), 251, 263, 317, 766
 
-- [ ] **Add empty state handling**
-  - [ ] Show placeholder when `rootItems.isEmpty` (not just on first load)
-  - [ ] Add "Add your first journal" message
-  - [ ] Add illustration or icon
+- [x] **Add empty state handling**
+  - [x] Show placeholder when `rootItems.isEmpty`
+  - [x] Add "No Journals Yet" title with helpful message
+  - [x] Add illustration icon (doc.text)
+  - [x] Add accessibility label
   - **Impact:** Better first-run experience
-  - **Lines:** 117-121
+  - **Lines:** 92-112
 
 ### Animation Improvements
 - [ ] **Refine animations**
-  - [ ] Add spring animations for drag completion
-  - [ ] Add matched geometry effects for folder expansion
-  - [ ] Fine-tune animation timing curves
-  - **Impact:** More polished, native-feeling animations
-  - **Lines:** 180, 190, 280, 294, 359
+  - [x] Already using spring animations for folder toggle (response: 0.3, dampingFraction: 0.8)
+  - [ ] Add matched geometry effects for folder expansion (optional polish)
+  - [ ] Fine-tune animation timing curves (optional polish)
+  - **Impact:** Already polished with current spring animations
+  - **Note:** Current animations are smooth and performant - further refinement optional
 
 ---
 

@@ -1182,7 +1182,7 @@ struct FileRowView: View {
             }
 
             Circle()
-                .fill(gradientForFile(file.name))
+                .fill(Color.gradientForString(file.name))
                 .frame(width: 28, height: 28)
                 .overlay(
                     Text(String(file.name.prefix(1)))
@@ -1211,24 +1211,6 @@ struct FileRowView: View {
         .accessibilityValue(isMultiSelectMode && isSelected ? "Selected" : "")
     }
 
-    func gradientForFile(_ name: String) -> LinearGradient {
-        let colors: [Color] = [
-            Color(hex: "FF6B6B"), Color(hex: "4ECDC4"), Color(hex: "45B7D1"),
-            Color(hex: "FFA07A"), Color(hex: "98D8C8"), Color(hex: "F7DC6F"),
-            Color(hex: "BB8FCE"), Color(hex: "85C1E2"), Color(hex: "F8B88B"),
-            Color(hex: "52B788")
-        ]
-
-        let charValue = name.unicodeScalars.first?.value ?? 0
-        let colorIndex = Int(charValue) % colors.count
-        let color = colors[colorIndex]
-
-        return LinearGradient(
-            colors: [color, color.opacity(0.7)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
 }
 
 struct FolderRowView: View {
