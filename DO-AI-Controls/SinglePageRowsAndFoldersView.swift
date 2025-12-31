@@ -15,20 +15,24 @@ struct SinglePageRowsAndFoldersView: View {
     @State private var folders: [UUID: FolderNode] = [:]
     @State private var isEditMode = false
 
+    // Cached computed properties for performance
+    @State private var cachedDisplayedItems: [DisplayNode] = []
+    @State private var cachedOrderedFolders: [FolderNode] = []
+
     let accentColor = Color(hex: "44C0FF")
 
     var body: some View {
         NavigationStack {
             ZStack {
                 List {
-                    ForEach(displayedItems) { item in
+                    ForEach(cachedDisplayedItems) { item in
                         switch item {
                         case .file(let file, let isNested):
                             SinglePageFileRowView(
                                 file: file,
                                 isNested: isNested,
                                 isEditMode: isEditMode,
-                                orderedFolders: orderedFolders,
+                                orderedFolders: cachedOrderedFolders,
                                 accentColor: accentColor,
                                 onMoveToFolder: { folderId in
                                     moveFileToFolder(file: file, folderId: folderId)
@@ -118,10 +122,14 @@ struct SinglePageRowsAndFoldersView: View {
             if rootItems.isEmpty {
                 initializeDefaultData()
             }
+            rebuildCache()
         }
     }
 
-    var displayedItems: [DisplayNode] {
+    // MARK: - Cache Management
+
+    private func rebuildCache() {
+        // Rebuild displayed items
         var result: [DisplayNode] = []
         for item in rootItems {
             result.append(item)
@@ -129,12 +137,10 @@ struct SinglePageRowsAndFoldersView: View {
                 result.append(contentsOf: folder.contents.map { .file($0, isNested: true) })
             }
         }
-        return result
-    }
+        cachedDisplayedItems = result
 
-    var orderedFolders: [FolderNode] {
-        // Extract folders in the order they appear in rootItems
-        rootItems.compactMap { item in
+        // Rebuild ordered folders
+        cachedOrderedFolders = rootItems.compactMap { item in
             if case .folder(let folder) = item {
                 return folder
             }
@@ -182,6 +188,7 @@ struct SinglePageRowsAndFoldersView: View {
                case .folder(var folder) = rootItems[index] {
                 folder.isExpanded.toggle()
                 updateFolder(folder)
+                rebuildCache()
             }
         }
     }
@@ -206,31 +213,14 @@ struct SinglePageRowsAndFoldersView: View {
 
             // Append to rootItems
             rootItems.append(.folder(newFolder))
+            rebuildCache()
         }
     }
 
     func addNewFile() {
         withAnimation {
-            // Find the next row number by checking all existing files
-            var existingRowNumbers: [Int] = []
-
-            // Check root-level files
-            for item in rootItems {
-                if case .file(let file, _) = item {
-                    if let number = extractRowNumber(from: file.name) {
-                        existingRowNumbers.append(number)
-                    }
-                }
-            }
-
-            // Check files in folders
-            for folder in folders.values {
-                for file in folder.contents {
-                    if let number = extractRowNumber(from: file.name) {
-                        existingRowNumbers.append(number)
-                    }
-                }
-            }
+            // Find the next row number using Set for O(n) lookup
+            let existingRowNumbers = getAllFileNumbers()
 
             // Find next available number
             var nextNumber = 1
@@ -243,7 +233,32 @@ struct SinglePageRowsAndFoldersView: View {
 
             // Append to rootItems
             rootItems.append(.file(newFile, isNested: false))
+            rebuildCache()
         }
+    }
+
+    private func getAllFileNumbers() -> Set<Int> {
+        var numbers = Set<Int>()
+
+        // Check root-level files
+        for item in rootItems {
+            if case .file(let file, _) = item {
+                if let number = extractRowNumber(from: file.name) {
+                    numbers.insert(number)
+                }
+            }
+        }
+
+        // Check files in folders
+        for folder in folders.values {
+            for file in folder.contents {
+                if let number = extractRowNumber(from: file.name) {
+                    numbers.insert(number)
+                }
+            }
+        }
+
+        return numbers
     }
 
     private func extractRowNumber(from name: String) -> Int? {
@@ -264,13 +279,19 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func updateFolder(_ folder: FolderNode) {
+        #if DEBUG
         print("updateFolder called: \(folder.name), contents: \(folder.contents.map { $0.name })")
+        #endif
         folders[folder.id] = folder
         if let index = findFolderIndex(id: folder.id) {
             rootItems[index] = .folder(folder)
+            #if DEBUG
             print("Updated rootItems[\(index)] with folder: \(folder.name)")
+            #endif
         } else {
+            #if DEBUG
             print("WARNING: Could not find folder \(folder.name) in rootItems")
+            #endif
         }
     }
 
@@ -287,6 +308,7 @@ struct SinglePageRowsAndFoldersView: View {
             // Expand folder to show the moved file
             folder.isExpanded = true
             updateFolder(folder)
+            rebuildCache()
         }
     }
 
@@ -316,18 +338,23 @@ struct SinglePageRowsAndFoldersView: View {
 
             // Insert at root level directly below the folder
             rootItems.insert(.file(file, isNested: false), at: folderIndex + 1)
+            rebuildCache()
         }
     }
 
     func removeFileFromSource(_ file: FileNode) {
+        #if DEBUG
         print("removeFileFromSource called for: \(file.name)")
+        #endif
         // Try root first
         if let index = rootItems.firstIndex(where: {
             if case .file(let f, _) = $0, f.id == file.id { return true }
             return false
         }) {
             rootItems.remove(at: index)
+            #if DEBUG
             print("Removed \(file.name) from rootItems at index \(index)")
+            #endif
             return
         }
 
@@ -335,21 +362,27 @@ struct SinglePageRowsAndFoldersView: View {
         for (_, var folder) in folders {
             if let index = folder.contents.firstIndex(where: { $0.id == file.id }) {
                 folder.contents.remove(at: index)
+                #if DEBUG
                 print("Removed \(file.name) from folder \(folder.name) at index \(index)")
+                #endif
                 updateFolder(folder)
                 return
             }
         }
 
+        #if DEBUG
         print("WARNING: Could not find \(file.name) to remove")
+        #endif
     }
 
     func moveItem(from source: IndexSet, to destination: Int) {
         guard let sourceIndex = source.first else { return }
-        let movedItem = displayedItems[sourceIndex]
+        let movedItem = cachedDisplayedItems[sourceIndex]
 
+        #if DEBUG
         print("\n=== MOVE ITEM START ===")
         print("Source index: \(sourceIndex), Destination: \(destination)")
+        #endif
 
         // Don't allow moving drop zones
         if case .dropZone = movedItem {
@@ -359,21 +392,29 @@ struct SinglePageRowsAndFoldersView: View {
         withAnimation {
             // Handle folder moves (only at root level)
             if case .folder(let folder) = movedItem {
+                #if DEBUG
                 print("Moving folder: \(folder.name)")
+                #endif
 
                 // Folders can only be moved at root level
                 let rootIndex = mapDisplayIndexToRootIndex(sourceIndex)
                 let destRootIndex = mapDisplayIndexToRootIndex(destination)
 
+                #if DEBUG
                 print("Folder move: displayIndex \(sourceIndex) -> \(destination), rootIndex \(rootIndex) -> \(destRootIndex)")
+                #endif
 
                 guard rootIndex >= 0 && rootIndex < rootItems.count else {
+                    #if DEBUG
                     print("Invalid rootIndex: \(rootIndex)")
+                    #endif
                     return
                 }
 
                 guard destRootIndex >= 0 && destRootIndex <= rootItems.count else {
+                    #if DEBUG
                     print("Invalid destRootIndex: \(destRootIndex)")
+                    #endif
                     return
                 }
 
@@ -382,13 +423,17 @@ struct SinglePageRowsAndFoldersView: View {
                     toOffset: destRootIndex
                 )
 
+                #if DEBUG
                 print("Folder moved successfully")
+                #endif
                 return
             }
 
             // Handle file moves
             guard case .file(let file, _) = movedItem else { return }
+            #if DEBUG
             print("Moving file: \(file.name)")
+            #endif
             // Determine context of source and destination
             let sourceContext = getItemContext(at: sourceIndex)
             var destinationContext = getItemContext(at: destination)
@@ -399,16 +444,18 @@ struct SinglePageRowsAndFoldersView: View {
             if case .inFolder(let sourceFolderId) = sourceContext,
                destinationContext != sourceContext {
                 // Find the source folder in displayed items
-                if let folderIndex = displayedItems.firstIndex(where: { item in
+                if let folderIndex = cachedDisplayedItems.firstIndex(where: { item in
                     if case .folder(let f) = item, f.id == sourceFolderId { return true }
                     return false
                 }),
-                   case .folder(let sourceFolder) = displayedItems[folderIndex] {
+                   case .folder(let sourceFolder) = cachedDisplayedItems[folderIndex] {
                     // Check if destination is right after this folder's contents
                     let folderEndIndex = folderIndex + sourceFolder.contents.count
                     if destination == folderEndIndex + 1 {
                         // Treat this as moving to end of the same folder
+                        #if DEBUG
                         print("Edge case detected: destination is right after folder contents, treating as same-folder move")
+                        #endif
                         destinationContext = .inFolder(sourceFolderId)
                     }
                 }
@@ -421,16 +468,22 @@ struct SinglePageRowsAndFoldersView: View {
                     let rootIndex = mapDisplayIndexToRootIndex(sourceIndex)
                     let destRootIndex = mapDisplayIndexToRootIndex(destination)
 
+                    #if DEBUG
                     print("Root-level move: displayIndex \(sourceIndex) -> \(destination), rootIndex \(rootIndex) -> \(destRootIndex)")
                     print("Current rootItems count: \(rootItems.count)")
+                    #endif
 
                     guard rootIndex >= 0 && rootIndex < rootItems.count else {
+                        #if DEBUG
                         print("Invalid rootIndex: \(rootIndex)")
+                        #endif
                         return
                     }
 
                     guard destRootIndex >= 0 && destRootIndex <= rootItems.count else {
+                        #if DEBUG
                         print("Invalid destRootIndex: \(destRootIndex)")
+                        #endif
                         return
                     }
 
@@ -441,7 +494,7 @@ struct SinglePageRowsAndFoldersView: View {
                 } else if case .inFolder(let folderId) = sourceContext,
                           var folder = folders[folderId] {
                     // Moving within same folder - reorder contents
-                    let folderStartIndex = displayedItems.firstIndex { item in
+                    let folderStartIndex = cachedDisplayedItems.firstIndex { item in
                         if case .folder(let f) = item, f.id == folderId { return true }
                         return false
                     }
@@ -452,12 +505,16 @@ struct SinglePageRowsAndFoldersView: View {
 
                         // Validate indices
                         guard sourceInFolder >= 0 && sourceInFolder < folder.contents.count else {
+                            #if DEBUG
                             print("Invalid sourceInFolder: \(sourceInFolder), folder.contents.count: \(folder.contents.count)")
+                            #endif
                             return
                         }
 
                         guard destInFolder >= 0 && destInFolder <= folder.contents.count else {
+                            #if DEBUG
                             print("Invalid destInFolder: \(destInFolder), folder.contents.count: \(folder.contents.count)")
+                            #endif
                             return
                         }
 
@@ -479,7 +536,7 @@ struct SinglePageRowsAndFoldersView: View {
                 if case .inFolder(let destFolderId) = destinationContext,
                    let destFolder = folders[destFolderId] {
                     // Calculate position in folder BEFORE any changes
-                    if let folderStartIndex = displayedItems.firstIndex(where: { item in
+                    if let folderStartIndex = cachedDisplayedItems.firstIndex(where: { item in
                         if case .folder(let f) = item, f.id == destFolderId { return true }
                         return false
                     }) {
@@ -502,7 +559,9 @@ struct SinglePageRowsAndFoldersView: View {
                     // Moving into a folder
                     let finalInsertPosition = min(insertPos, destFolder.contents.count)
 
+                    #if DEBUG
                     print("Cross-level move into folder: insertPosition=\(finalInsertPosition), folder.contents.count=\(destFolder.contents.count)")
+                    #endif
 
                     destFolder.contents.insert(file, at: finalInsertPosition)
 
@@ -516,12 +575,15 @@ struct SinglePageRowsAndFoldersView: View {
                     // Moving to root level
                     let finalInsertPosition = min(insertPos, rootItems.count)
 
+                    #if DEBUG
                     print("Cross-level move to root: insertPosition=\(finalInsertPosition), rootItems.count=\(rootItems.count)")
+                    #endif
 
                     rootItems.insert(.file(file, isNested: false), at: finalInsertPosition)
                 }
             }
 
+            #if DEBUG
             print("=== MOVE ITEM END ===")
             let rootItemsDescription = rootItems.map { item -> String in
                 switch item {
@@ -536,6 +598,10 @@ struct SinglePageRowsAndFoldersView: View {
                 print("  \(folder.name): \(folder.contents.map { $0.name })")
             }
             print()
+            #endif
+
+            // Rebuild cache after all moves complete
+            rebuildCache()
         }
     }
 
@@ -571,11 +637,11 @@ struct SinglePageRowsAndFoldersView: View {
     }
 
     func getItemContext(at index: Int) -> ItemContext {
-        guard index < displayedItems.count else { return .root }
+        guard index < cachedDisplayedItems.count else { return .root }
 
         // Walk backwards to find the containing folder
         for i in stride(from: index, through: 0, by: -1) {
-            if case .folder(let folder) = displayedItems[i] {
+            if case .folder(let folder) = cachedDisplayedItems[i] {
                 // Check if we're within this folder's expanded contents
                 if folder.isExpanded && i < index {
                     // Check if index is within the folder's content range
