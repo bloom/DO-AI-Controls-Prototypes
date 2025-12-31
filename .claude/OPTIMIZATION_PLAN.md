@@ -37,21 +37,21 @@
 ## 🟡 Medium Priority - Code Quality & Robustness
 
 ### Code Organization
-- [ ] **Refactor large `moveItem()` function**
-  - [ ] Extract validation logic into `validateMove()`
-  - [ ] Extract folder moves into `performFolderMove()`
-  - [ ] Extract same-context moves into `performSameContextMove()`
-  - [ ] Extract cross-level moves into `performCrossLevelMove()`
-  - [ ] Create `MoveOperation` enum to represent move types
+- [x] **Refactor large `moveItem()` function**
+  - [x] Extract validation logic into `determineMoveOperation()`
+  - [x] Extract folder moves into `performFolderMove()`
+  - [x] Extract same-context moves into `performSameContextMove()`
+  - [x] Extract cross-level moves into `performCrossLevelMove()`
+  - [x] Create `MoveOperation` enum to represent move types
   - **Impact:** Better readability, easier testing, clearer logic flow
-  - **Lines:** 347-539 (192 lines)
+  - **Lines:** Reduced from 228 lines to 54 lines, with 184 lines distributed across 4 focused helper functions
 
-- [ ] **Simplify dual state management**
-  - [ ] Consider deriving `folders` dictionary from `rootItems` via computed property
-  - [ ] Or document why both are needed and add sync validation
-  - [ ] Reduce risk of desynchronization bugs
-  - **Impact:** Simpler mental model, fewer sync bugs
-  - **Lines:** 14-15, 268-270
+- [x] **Simplify dual state management**
+  - [x] Document why both are needed (performance: array for order, dictionary for O(1) lookup)
+  - [x] Add sync validation with `validateStateSync()` (DEBUG only)
+  - [x] Reduce risk of desynchronization bugs
+  - **Impact:** Clear rationale documented, validation catches sync errors in development
+  - **Lines:** 33-46 (documentation), 370-410 (validation function)
 
 ### Edge Case Handling
 - [ ] **Handle empty folders explicitly**
@@ -70,14 +70,16 @@
   - **Lines:** 189-210
 
 ### Accessibility
-- [ ] **Add VoiceOver support**
-  - [ ] Add `.accessibilityLabel()` to drag handles
-  - [ ] Add `.accessibilityHint()` to folder expand/collapse
-  - [ ] Add `.accessibilityLabel()` to move-to-folder menu
-  - [ ] Add `.accessibilityValue()` to folder with item count
-  - [ ] Test with VoiceOver enabled
+- [x] **Add VoiceOver support**
+  - [x] Add `.accessibilityLabel()` to file rows and folder rows
+  - [x] Add `.accessibilityHint()` to folder expand/collapse and drag operations
+  - [x] Add `.accessibilityLabel()` to move-to-folder menu items
+  - [x] Add `.accessibilityValue()` to folders with item count and expansion state
+  - [x] Add accessibility to toolbar buttons (New Folder, Edit/Done)
+  - [x] Add accessibility to FAB (New Journal button)
+  - [ ] Test with VoiceOver enabled on device
   - **Impact:** Makes app usable for vision-impaired users
-  - **Lines:** Throughout view components
+  - **Lines:** File rows (888-891), Folder rows (955-959), Menu items (873-874), Toolbar (132-133, 141-142), FAB (115-116)
 
 ---
 
